@@ -1,0 +1,66 @@
+"""Mirrors PEOps-Front/src/features/models/types.ts.
+
+Optionality rules (zod):
+  - lastOptimizedAt / bestAccuracy: `.nullable()` — key always present, may be null
+  - description / analysisRunId:    `.optional()` — key may be absent entirely
+"""
+
+from __future__ import annotations
+
+from typing import Literal
+
+from pydantic import BaseModel
+
+from app.schemas.common import IngestionLogLevel, ModelFormat, ModelStatus
+
+
+class ModelListItem(BaseModel):
+    id: str
+    name: str
+    typeFull: str
+    typeShort: str
+    format: ModelFormat
+    lastLearnedAt: str
+    lastOptimizedAt: str | None
+    status: ModelStatus
+    bestAccuracy: float | None
+    isDeployed: bool
+    description: str | None = None
+    analysisRunId: str | None = None
+
+    def to_response(self) -> dict:
+        """zod `.optional()` fields are dropped when None (vs nullable ones)."""
+        data = self.model_dump()
+        if data.get("description") is None:
+            data.pop("description", None)
+        if data.get("analysisRunId") is None:
+            data.pop("analysisRunId", None)
+        return data
+
+
+class IngestionLog(BaseModel):
+    ts: str
+    level: IngestionLogLevel
+    message: str
+
+
+class IngestionRun(BaseModel):
+    id: str
+    modelId: str
+    fileName: str
+    startedAt: str
+    status: Literal["streaming", "completed", "failed"]
+
+
+class ImportRequest(BaseModel):
+    fileName: str = "uploaded-model.onnx"
+
+
+class RenameRequest(BaseModel):
+    name: str
+
+
+class ImportResponse(BaseModel):
+    runId: str
+    modelId: str
+    fileName: str

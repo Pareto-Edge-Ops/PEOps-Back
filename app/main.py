@@ -1,0 +1,151 @@
+"""PEOps backend — FastAPI app factory.
+
+All routes mount under `/api` to match the SPA's fetch('/api' + path). In
+production the frontend is served from the same origin behind a reverse proxy so
+the httpOnly session cookie is sent with every request.
+"""
+
+from __future__ import annotations
+
+import logging
+from contextlib import asynccontextmanager
+
+from fastapi import APIRouter, Depends, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
+from app.auth.dependencies import get_current_user
+from app.config import get_settings
+from app.db import get_engine, init_db
+from app.errors import install_error_handlers
+from app.middleware import RequestContextMiddleware, configure_logging
+from app.seed import seed_if_empty
+from app.services.limits import limiter
+
+log = logging.getLogger("peops")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    settings = get_settings()
+    configure_logging(settings)
+    for warning in settings.validate_runtime():  # raises on misconfig (fail fast)
+        log.warning(warning)
+
+    # Postgres schema is owned by Alembic; create_all is the SQLite/test path.
+    if settings.is_sqlite:
+        init_db()
+    from sqlmodel import Session
+
+    with Session(get_engine()) as session:
+        seed_if_empty(session)
+    log.info("PEOps backend ready (db=%s storage=%s inline_jobs=%s)",
+             "sqlite" if settings.is_sqlite else "postgres",
+             settings.storage_backend, settings.inline_jobs)
+    yield
+
+
+def create_app() -> FastAPI:
+    settings = get_settings()
+    app = FastAPI(
+        title="PEOps Backend",
+        description=(
+            "Sensitivity-Guided Pareto Search + Surrogate Model + Real Inference "
+            "Benchmarks — backend for the PEOps on-device AI compression service"
+        ),
+        version="1.0.0",
+        lifespan=lifespan,
+    )
+    app.state.limiter = limiter
+    install_error_handlers(app)
+
+    app.add_middleware(RequestContextMiddleware)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origin_list,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+        expose_headers=["X-Request-ID"],
+    )
+
+    from app.routers import (
+        architecture,
+        auth,
+        dashboard,
+        ingestion,
+        models,
+        pareto,
+        sdk,
+        telemetry,
+    )
+
+    api = APIRouter(prefix="/api")
+    # Public — issues/clears the session cookie.
+    api.include_router(auth.router)
+    # Every other router requires a valid session. Handlers that scope by owner
+    # also inject CurrentUser; this router-level gate is defense-in-depth so a
+    # newly added endpoint can never be unintentionally public.
+    protected = [Depends(get_current_user)]
+    api.include_router(dashboard.router, dependencies=protected)
+    api.include_router(models.router, dependencies=protected)
+    api.include_router(ingestion.router, dependencies=protected)
+    api.include_router(architecture.router, dependencies=protected)
+    api.include_router(pareto.router, dependencies=protected)
+    api.include_router(telemetry.router, dependencies=protected)
+    api.include_router(sdk.router, dependencies=protected)
+    app.include_router(api)
+
+    @app.get("/healthz")
+    def healthz() -> dict:
+        """Liveness — cheap, never touches dependencies."""
+        return {"ok": True, "fastPipeline": settings.fast_pipeline}
+
+    @app.get("/readyz")
+    def readyz() -> JSONResponse:
+        """Readiness — DB + Redis (when used) + object storage reachable."""
+        checks: dict[str, str] = {}
+        ok = True
+
+        try:
+            from sqlalchemy import text
+            from sqlmodel import Session
+
+            with Session(get_engine()) as s:
+                s.exec(text("SELECT 1"))
+            checks["db"] = "ok"
+        except Exception as exc:  # noqa: BLE001
+            checks["db"] = f"error: {exc}"
+            ok = False
+
+        if not settings.inline_jobs:
+            try:
+                import redis
+
+                redis.Redis.from_url(settings.redis_url, socket_timeout=2).ping()
+                checks["redis"] = "ok"
+            except Exception as exc:  # noqa: BLE001
+                checks["redis"] = f"error: {exc}"
+                ok = False
+
+        try:
+            from app.services.storage import get_storage
+
+            get_storage().ping()  # type: ignore[attr-defined]
+            checks["storage"] = "ok"
+        except Exception as exc:  # noqa: BLE001
+            checks["storage"] = f"error: {exc}"
+            ok = False
+
+        if ok:
+            return JSONResponse({"ok": True, "checks": checks})
+        return JSONResponse(
+            status_code=503,
+            content={"detail": {"code": "not_ready", "message": "Dependencies unavailable.",
+                                "checks": checks}},
+        )
+
+    return app
+
+
+app = create_app()

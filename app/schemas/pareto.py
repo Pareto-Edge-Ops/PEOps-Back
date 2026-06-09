@@ -1,0 +1,36 @@
+"""Mirrors PEOps-Front/src/features/pareto/types.ts."""
+
+from __future__ import annotations
+
+from typing import Literal
+
+from pydantic import BaseModel
+
+
+class Trial(BaseModel):
+    id: str
+    name: str
+    accuracy: float
+    latency: float
+    size: float
+    score: float
+    quant: str
+    onFrontier: bool
+
+
+class ParetoBudget(BaseModel):
+    maxLatency: float
+    maxAccuracyDrop: float
+    maxSize: float
+
+
+class ParetoExperiment(BaseModel):
+    modelId: str
+    modelName: str
+    experimentId: str
+    status: Literal["running", "completed", "paused"]
+    iterCurrent: int
+    iterTotal: int
+    budget: ParetoBudget
+    baseAccuracy: float
+    trials: list[Trial]
