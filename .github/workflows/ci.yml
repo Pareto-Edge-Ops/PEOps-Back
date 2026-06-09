@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Install dev tooling
+        run: pip install -e ".[dev]"
+      - name: Ruff lint
+        run: ruff check app
+      # mypy is being adopted incrementally on this previously-unchecked,
+      # SQLModel/SQLAlchemy-heavy codebase (their stubs report framework noise),
+      # so it reports but does not yet gate. Tighten to blocking as the count
+      # ratchets to zero.
+      - name: Type check (informational)
+        run: mypy app
+        continue-on-error: true
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      # CPU-only torch first so the editable install below reuses the wheel and
+      # never pulls multi-GB CUDA builds.
+      - name: Install CPU torch
+        run: pip install --index-url https://download.pytorch.org/whl/cpu "torch>=2.4.0"
+      # prod extra is needed because the app imports slowapi at module load; the
+      # lean test-engine extra runs the real fast pipeline. The `formats` extra
+      # (TensorFlow etc.) is intentionally omitted — the 5 format tests
+      # importorskip and skip cleanly without it.
+      - name: Install backend + vendored engine
+        run: pip install -e ".[dev,test-engine,prod]"
+      - name: Verify the vendored engine imports
+        run: |
+          python -c "import peops; \
+            from peops.core.uosa import compute_uosa; \
+            from peops.search.pareto_search import ParetoSearch; \
+            from peops.sdk import _reconstruct_model; \
+            print('engine OK')"
+      - name: Run tests (fast pipeline)
+        env:
+          PEOPS_FAST_PIPELINE: "1"
+          PEOPS_INLINE_JOBS: "1"
+          PEOPS_RATE_LIMIT_ENABLED: "0"
+        run: python -m pytest -q

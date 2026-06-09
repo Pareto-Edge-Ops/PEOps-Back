@@ -1,0 +1,34 @@
+# Build context is this repo (PEOps-Back). Keep caches, local state and secrets
+# out of the image to keep it small and avoid leaking dev artifacts.
+**/__pycache__/
+**/*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local databases, object storage and logs (dev/runtime state)
+peops.db*
+live.db*
+storage/
+storage_live/
+*.db
+*.db-*
+uvicorn.log
+
+# Secrets and local env
+.env
+deploy/.env
+
+# Virtualenvs
+.venv/
+venv/
+
+# VCS / OS / editor cruft
+.git/
+.github/
+.DS_Store
+**/.DS_Store
+
+# Deployment compose (not needed inside the app image)
+deploy/

@@ -1,0 +1,127 @@
+[project]
+name = "peops-back"
+version = "0.1.0"
+description = "PEOps backend — Sensitivity-Guided Pareto Search + Surrogate Model + Telemetry Closed-Loop API server"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "pydantic[email]>=2.6",
+    "pydantic-settings>=2.2",
+    "sqlmodel>=0.0.16",
+    "sse-starlette>=2.0",
+    "python-multipart>=0.0.9",
+    "numpy>=1.26",
+    "bcrypt>=4.0",
+    "PyJWT>=2.8",
+    "google-auth>=2.30",
+    "requests>=2.31",
+    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+# Real compression engine — the `peops` package is VENDORED into this repo
+# (top-level `peops/`, installed together with `app/` via the build below), so
+# no separate install is needed. This extra only pulls the engine's third-party
+# runtime deps. `skl2onnx` is a lazy import (sklearn-pickle ingestion path only);
+# the engine never imports xgboost/onnxmltools, so they are intentionally omitted.
+engine = [
+    "onnx>=1.16.0",
+    "onnxruntime>=1.18.0",
+    "optuna>=3.6.0",
+    "scikit-learn>=1.5.0",
+    "skl2onnx>=1.17.0",
+    "torch>=2.4.0",
+]
+# Lean subset of `engine` for CI / the fast pytest pipeline: it synthesizes ONNX
+# directly and never hits the sklearn-pickle path, so skl2onnx is unnecessary.
+test-engine = [
+    "onnx>=1.16.0",
+    "onnxruntime>=1.18.0",
+    "optuna>=3.6.0",
+    "scikit-learn>=1.5.0",
+    "torch>=2.4.0",
+]
+# Format readers/converters — let UPLOADED Keras (.h5/.keras), TFLite (.tflite),
+# frozen-pb (.pb), safetensors, CoreML (.mlmodel) and GGUF models take the REAL
+# pipeline instead of failing. Without these the worker can only synthesize.
+# On Linux `tensorflow` is the CPU build (CUDA wheels come only from the
+# `tensorflow[and-cuda]` extra); it brings keras 3 + h5py transitively.
+formats = [
+    "tensorflow>=2.20,<2.22",
+    "tf-keras>=2.20",          # Keras 2 compat runtime — loads legacy (Keras 2.x) .h5 full models
+    "tf2onnx>=1.17.0",
+    "h5py>=3.11.0",
+    "safetensors>=0.4.0",
+    "coremltools>=8.0",
+    "gguf>=0.10.0",
+]
+# Production infra: Postgres, Redis-backed job queue, S3 object storage,
+# rate limiting, structured logging, migrations.
+prod = [
+    "psycopg[binary]>=3.2",
+    "redis>=5.0",
+    "arq>=0.26",
+    "boto3>=1.34",
+    "slowapi>=0.1.9",
+    "alembic>=1.13",
+    "python-json-logger>=2.0",
+]
+dev = [
+    "pytest>=8.0",
+    "httpx>=0.27",
+    "ruff>=0.6",
+    "mypy>=1.10",
+    "pre-commit>=3.7",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+# `app*` is the backend; `peops*` is the vendored compression engine.
+include = ["app*", "peops*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["app", "peops"]
+# Vendored engine and generated migrations are not linted here — they follow
+# their own upstream style and churning them would obscure real diffs.
+extend-exclude = ["peops", "migrations"]
+
+[tool.ruff.lint]
+# A pragmatic baseline for this hand-written FastAPI codebase: pyflakes (real
+# bugs), pycodestyle errors, import sorting, pyupgrade and bugbear. Opinionated
+# style groups (C4/SIM) and ruff-format are intentionally left off to avoid mass
+# churn on existing code — lint catches real issues; formatting stays advisory.
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["E501"]  # long lines (often KaTeX/Korean copy) are not worth wrapping
+
+[tool.ruff.lint.flake8-bugbear]
+# FastAPI's dependency-injection idiom puts Depends()/Query()/… in defaults; that
+# is correct usage, not the B008 mutable-default smell.
+extend-immutable-calls = [
+    "fastapi.Depends", "fastapi.Query", "fastapi.Security", "fastapi.Header",
+    "fastapi.Cookie", "fastapi.Path", "fastapi.File", "fastapi.Form", "fastapi.Body",
+]
+
+[tool.mypy]
+python_version = "3.10"
+# Engine/ML third-party libs ship without type stubs; don't fail on them.
+ignore_missing_imports = true
+# Scope type-checking to the application; vendored/generated code is excluded.
+files = ["app"]
+exclude = ["peops/", "migrations/", "tests/"]
+disallow_untyped_defs = false
+warn_unused_ignores = false
+
+# The vendored engine is followed via imports but is not ours to type-check.
+[[tool.mypy.overrides]]
+module = "peops.*"
+ignore_errors = true
