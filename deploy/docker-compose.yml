@@ -1,13 +1,25 @@
-# PEOps — full single-URL production stack.
+# PEOps — backend stack (independently deployable).
+#
+# This brings up ONLY the backend: the FastAPI API, the arq worker, and their
+# infrastructure (PostgreSQL, Redis, MinIO/S3). It does NOT build or serve the
+# frontend — the SPA is deployed separately from the PEOps-Front repo, whose
+# Caddy reverse-proxies /api back to this stack (BACKEND_UPSTREAM).
 #
 # Run from this directory (PEOps-Back/deploy):
-#     cp .env.example .env  &&  docker compose up -d --build
-# The product is served at http://localhost:8080 (Caddy → SPA + /api).
+#     cp .env.example .env   # edit secrets
+#     docker compose up -d --build
+# The API is then reachable at http://localhost:${PEOPS_API_PORT:-8000}
+# (e.g. http://localhost:8000/healthz).
 #
-# Build contexts (relative to this file):
-#   api / worker → ..              (the PEOps-Back repo; engine is vendored in)
-#   caddy        → ../../PEOps-Front  (sibling checkout of the frontend repo)
-# So check out PEOps-Front next to PEOps-Back for the `caddy` build to resolve.
+# Build context for api/worker is `..` (the PEOps-Back repo). The compression
+# engine (`peops/`) is vendored into the repo, so the image is self-contained —
+# no sibling checkout or copy step is required.
+
+# Pin the compose project name so this stack is isolated from the frontend stack
+# (both live in a directory literally named `deploy`, which would otherwise
+# collide on the default project name and treat each other's containers as
+# orphans).
+name: peops-backend
 
 services:
   postgres:
@@ -61,11 +73,13 @@ services:
       context: ..
       dockerfile: Dockerfile
     command: ["sh", "-c", "python -m alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
-    # Localhost-only passthrough so the Vite dev server (:5173) can proxy /api to
-    # the running backend. External traffic still goes through Caddy on :8080 —
-    # this binds to 127.0.0.1, so it never widens the public surface.
+    # Publish the API so the separately-deployed frontend (its Caddy) and any
+    # direct SDK clients can reach it. PEOPS_API_BIND defaults to 127.0.0.1 so a
+    # single-box dev run isn't exposed; set it to 0.0.0.0 (or a specific host IP)
+    # when the frontend stack runs elsewhere. In production keep this on a private
+    # network behind TLS rather than a public 0.0.0.0 bind.
     ports:
-      - "127.0.0.1:8000:8000"
+      - "${PEOPS_API_BIND:-127.0.0.1}:${PEOPS_API_PORT:-8000}:8000"
     environment: &backend_env
       PEOPS_DATABASE_URL: postgresql://${POSTGRES_USER:-peops}:${POSTGRES_PASSWORD:-peops}@postgres:5432/${POSTGRES_DB:-peops}
       PEOPS_REDIS_URL: redis://redis:6379/0
@@ -76,6 +90,8 @@ services:
       PEOPS_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-peopssecret}
       PEOPS_S3_FORCE_PATH_STYLE: "1"
       PEOPS_JWT_SECRET: ${PEOPS_JWT_SECRET:-change-me-in-production}
+      # The public origin browsers use to reach the PRODUCT (the frontend's
+      # Caddy). Drives CORS and the base URLs rendered in SDK snippets.
       PEOPS_PUBLIC_ORIGIN: ${PEOPS_PUBLIC_ORIGIN:-http://localhost:8080}
       PEOPS_CORS_ORIGINS: ${PEOPS_PUBLIC_ORIGIN:-http://localhost:8080}
       PEOPS_COOKIE_SECURE: ${PEOPS_COOKIE_SECURE:-0}
@@ -106,17 +122,6 @@ services:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
       minio-init: { condition: service_completed_successfully }
-
-  caddy:
-    build:
-      context: ../../PEOps-Front
-      dockerfile: Dockerfile
-    environment:
-      BACKEND_UPSTREAM: api:8000
-    ports:
-      - "${PEOPS_PORT:-8080}:80"
-    depends_on:
-      - api
 
 volumes:
   pgdata:
