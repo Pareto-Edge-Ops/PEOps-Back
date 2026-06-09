@@ -1,0 +1,180 @@
+"""Application settings — all configurable via PEOPS_* environment variables."""
+
+from __future__ import annotations
+
+import logging
+from datetime import datetime, timezone
+from functools import lru_cache
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger("peops")
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_prefix="PEOPS_", env_file=".env", extra="ignore")
+
+    # --- persistence ---
+    db_path: str = "peops.db"
+    # When set (e.g. postgresql://user:pass@host/db) this wins over the SQLite
+    # db_path. Tests/local-dev leave it empty → SQLite.
+    database_url: str | None = None
+    storage_dir: str = "storage"
+
+    # --- object storage ---
+    storage_backend: str = "local"        # local | s3
+    s3_endpoint_url: str | None = None     # set for MinIO; None → real AWS
+    s3_bucket: str = "peops-artifacts"
+    s3_region: str = "us-east-1"
+    s3_access_key: str | None = None
+    s3_secret_key: str | None = None
+    s3_force_path_style: bool = True       # MinIO needs path-style addressing
+
+    # --- job queue / worker ---
+    redis_url: str = "redis://localhost:6379/0"
+    # Run pipelines synchronously in-process instead of enqueuing to Redis.
+    # Tests & single-box local dev set this so no broker/worker is needed.
+    inline_jobs: bool = False
+    work_dir: str = "/tmp/peops-work"      # worker scratch (engine stages here)
+
+    # --- server ---
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    # Public origin browsers use to reach the app (e.g. https://app.example.com).
+    # Used to render correct base URLs in generated SDK snippets. When unset, the
+    # base URL is derived per-request from the incoming Host (good enough for dev
+    # and single-origin deploys); set it explicitly when behind a proxy/CDN.
+    public_origin: str | None = None
+
+    # --- auth ---
+    jwt_secret: str = "dev-insecure-change-me"
+    jwt_ttl_min: int = 60 * 24 * 7         # 7 days
+    cookie_secure: bool = True             # set 0 for plain-HTTP local dev
+    cookie_samesite: str = "lax"
+    cookie_domain: str | None = None
+    signup_enabled: bool = True
+
+    # --- Google OAuth (optional sign-in method) ---
+    google_client_id: str | None = None
+    google_client_secret: str | None = None
+    google_redirect_uri: str = "http://localhost:8080/api/auth/google/callback"
+    post_login_path: str = "/dashboard"    # where the SPA lands after OAuth
+
+    # --- uploads / limits ---
+    max_upload_mb: int = 2048
+    allowed_upload_exts: str = (
+        ".onnx,.pt,.pth,.bin,.ckpt,.safetensors,.h5,.keras,.pb,.tflite,"
+        ".mlmodel,.pkl,.joblib,.gguf"
+    )
+    rate_limit_enabled: bool = True
+    rate_limit_upload: str = "20/minute"
+    rate_limit_import: str = "60/minute"
+    rate_limit_auth: str = "30/minute"
+
+    # --- observability ---
+    log_level: str = "INFO"
+    log_json: bool = True
+
+    # --- determinism ---
+    seed: int = 42
+    # Fixed reference instant for all generated timestamps/series. When unset,
+    # the process start time is used (stable within one server process).
+    ref_date: str | None = None
+
+    # --- real compression pipeline (peops) ---
+    fast_pipeline: bool = False           # tiny model + few trials (tests/CI)
+    # 150: TPE saturates the small per-op search space (≤24 ops × quant levels)
+    # around 120–160 trials — diminishing returns past that, while keeping real
+    # uploads in the minutes range. Override with PEOPS_PARETO_TRIALS.
+    pareto_trials: int = 150              # Optuna trials per import (real mode)
+    n_probes: int = 16                    # synthetic calibration probes
+    max_compressible_ops: int = 24        # UOSA builds one ORT session per op — cap it
+    job_timeout_sec: int = 900
+    job_workers: int = 2
+
+    # --- dashboard ---
+    compute_quota_h: float = 500.0        # workspace compute budget (hours)
+
+    # ── derived helpers ──────────────────────────────────────────────────────
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def allowed_upload_ext_set(self) -> set[str]:
+        return {e.strip().lower() for e in self.allowed_upload_exts.split(",") if e.strip()}
+
+    @property
+    def effective_database_url(self) -> str:
+        """The SQLAlchemy URL actually used. database_url wins; else SQLite file."""
+        if self.database_url:
+            return self.database_url
+        return f"sqlite:///{self.db_path}"
+
+    @property
+    def is_sqlite(self) -> bool:
+        return self.effective_database_url.startswith("sqlite")
+
+    @property
+    def google_enabled(self) -> bool:
+        return bool(self.google_client_id and self.google_client_secret)
+
+    def validate_runtime(self) -> list[str]:
+        """Fail-fast checks at startup. Returns a list of warnings (non-fatal);
+        raises ValueError on misconfiguration that would break the app."""
+        warnings: list[str] = []
+        if self.jwt_secret == "dev-insecure-change-me":
+            warnings.append(
+                "PEOPS_JWT_SECRET is the insecure default — set a strong secret in production."
+            )
+        if bool(self.google_client_id) != bool(self.google_client_secret):
+            warnings.append(
+                "Google OAuth is half-configured — set BOTH PEOPS_GOOGLE_CLIENT_ID and "
+                "PEOPS_GOOGLE_CLIENT_SECRET (or neither). Google sign-in stays disabled."
+            )
+        if self.storage_backend == "s3":
+            missing = [
+                name for name, val in (
+                    ("PEOPS_S3_BUCKET", self.s3_bucket),
+                    ("PEOPS_S3_ACCESS_KEY", self.s3_access_key),
+                    ("PEOPS_S3_SECRET_KEY", self.s3_secret_key),
+                ) if not val
+            ]
+            if missing:
+                raise ValueError(
+                    f"storage_backend=s3 requires {', '.join(missing)}"
+                )
+        elif self.storage_backend != "local":
+            raise ValueError(f"unknown storage_backend: {self.storage_backend!r}")
+        if not self.is_sqlite and self.inline_jobs:
+            warnings.append(
+                "inline_jobs=1 with a non-SQLite DB runs pipelines inside the API "
+                "process — fine for a single box, but use a worker for production scale."
+            )
+        return warnings
+
+
+_PROCESS_START = datetime.now(timezone.utc).replace(microsecond=0)
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
+
+
+def ref_now() -> datetime:
+    """The reference 'now' for every generated timestamp.
+
+    Defaults to process start so repeated requests are byte-identical within a
+    server lifetime; pin PEOPS_REF_DATE for cross-process determinism.
+    """
+    s = get_settings()
+    if s.ref_date:
+        dt = datetime.fromisoformat(s.ref_date.replace("Z", "+00:00"))
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    return _PROCESS_START
+
+
+def iso(dt: datetime) -> str:
+    """ISO-8601 UTC with Z suffix and millisecond precision (JS-compatible)."""
+    return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
