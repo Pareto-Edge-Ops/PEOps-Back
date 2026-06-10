@@ -402,6 +402,10 @@ for key in archive.files:
     curl = f'''# Download the compressed artifact and verify its real checksum
 curl -L -o {info["fileName"]} {download}
 echo "{info["sha256"]}  {info["fileName"]}" | shasum -a 256 -c -'''
+    # The /sdk/usage contract is a flat record of language-keyed snippets (the SDK
+    # Hub renders each key as a code tab). The LIVE inference snippet + deploy CTA
+    # are built on the Deployments tab from the deployment's real endpoint, so
+    # this stays {python, curl} and the artifact-download story is unchanged.
     return {
         "python": {"language": "python", "filename": "use_compressed.py", "code": python},
         "curl": {"language": "curl", "filename": "download.sh", "code": curl},
