@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from sqlalchemy import Index, UniqueConstraint
 from sqlmodel import Field, SQLModel
 
 
@@ -102,14 +103,80 @@ class DeploymentRow(SQLModel, table=True):
     __tablename__ = "deployments"
 
     pk: int | None = Field(default=None, primary_key=True)
+    # Stable business id (dep_<token>) — used in the inference URL and to link
+    # api_keys / inference_events. `pk` stays the auto-increment surrogate.
+    id: str = Field(default="", index=True)
     user_id: str = Field(default="", index=True)
     model_id: str = Field(default="", index=True)
+    name: str = ""
     endpoint: str
     region: str
-    qps: float
-    p95: float
-    errors_pct: float
+    # Live metrics — maintained by the drift monitor from a rolling window of
+    # inference_events. Zero until the first real traffic arrives.
+    qps: float = 0.0
+    p95: float = 0.0
+    errors_pct: float = 0.0
+    accuracy_drift: float = 0.0       # pts vs original (benchmark baseline)
     status: str                       # live|canary|paused
+    created_at: str = ""
+    last_event_at: str | None = None  # ISO-8601 of the most recent inference
+
+
+class InferenceEventRow(SQLModel, table=True):
+    """One real inference served through /api/v1/infer — the raw telemetry fact."""
+
+    __tablename__ = "inference_events"
+    __table_args__ = (
+        Index("ix_infer_model_ts", "model_id", "ts"),
+        Index("ix_infer_deployment_ts", "deployment_id", "ts"),
+    )
+
+    pk: int | None = Field(default=None, primary_key=True)
+    user_id: str = Field(default="", index=True)
+    model_id: str = Field(index=True)
+    deployment_id: str = Field(default="", index=True)
+    ts: str = Field(index=True)               # ISO-8601 UTC, millisecond precision
+    latency_ms: float
+    success: bool = True
+    error_code: str | None = None             # set on a failed inference
+    batch_size: int = 1
+    region: str = ""
+
+
+class ApiKeyRow(SQLModel, table=True):
+    """A bearer key for a deployment's inference endpoint. Only the sha256 hash
+    is stored; the plaintext is shown once at creation and never persisted."""
+
+    __tablename__ = "api_keys"
+
+    id: str = Field(primary_key=True)
+    user_id: str = Field(default="", index=True)
+    deployment_id: str = Field(default="", index=True)
+    key_hash: str = Field(index=True)         # sha256 hex of the plaintext key
+    prefix: str                               # display only: peops_sk_live_3i7c…b71c
+    created_at: str
+    last_used_at: str | None = None
+    revoked: bool = False
+
+
+class TelemetryRollupRow(SQLModel, table=True):
+    """Per-deployment, per-minute pre-aggregate. The drift monitor upserts these
+    so 7d/30d chart ranges read cheap rollups instead of scanning raw events."""
+
+    __tablename__ = "telemetry_rollup"
+    __table_args__ = (
+        UniqueConstraint("deployment_id", "bucket_ts", name="uq_rollup_dep_bucket"),
+    )
+
+    pk: int | None = Field(default=None, primary_key=True)
+    deployment_id: str = Field(default="", index=True)
+    bucket_ts: str = Field(index=True)        # minute-truncated ISO-8601 UTC
+    count: int = 0
+    errors: int = 0
+    sum_latency: float = 0.0
+    p50: float = 0.0
+    p95: float = 0.0
+    p99: float = 0.0
 
 
 class AlertRow(SQLModel, table=True):

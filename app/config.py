@@ -69,6 +69,25 @@ class Settings(BaseSettings):
     rate_limit_upload: str = "20/minute"
     rate_limit_import: str = "60/minute"
     rate_limit_auth: str = "30/minute"
+    # Served inference is high-volume by design (a deployed model under load) —
+    # generous so the traffic simulator and real bursts aren't throttled.
+    rate_limit_infer: str = "1200/minute"
+
+    # --- real inference serving + live telemetry ---
+    inference_cache_size: int = 8         # warm ORT sessions kept in the LRU
+    max_infer_batch: int = 64             # cap on synthesized batch size
+    # Drift monitor: rolling window + thresholds (README closed-loop policy).
+    monitor_interval_sec: int = 60        # how often the monitor pass runs
+    monitor_window_min: int = 10          # rolling window for live deployment metrics
+    drift_p95_pct: float = 10.0           # alert when p95 rises > +10% vs baseline
+    drift_error_pct: float = 1.0          # alert when error rate exceeds 1%
+    drift_acc_pts: float = 0.5            # alert when accuracy drifts > 0.5 pts
+    # Demo affordance: when on, the dashboard "Generate traffic" button + the
+    # /telemetry/simulate endpoint are enabled (off in production by default).
+    telemetry_sim_enabled: bool = False
+    # Run the drift monitor from inside the API process (single-box / demo). In
+    # scaled deploys the arq worker's cron runs it instead, so this stays off.
+    monitor_inline_enabled: bool = False
 
     # --- observability ---
     log_level: str = "INFO"
