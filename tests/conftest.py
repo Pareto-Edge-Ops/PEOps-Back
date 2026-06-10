@@ -55,6 +55,15 @@ def client(tmp_path_factory: pytest.TempPathFactory) -> Iterator[TestClient]:
         # so the session cookie must be non-Secure for the suite.
         "PEOPS_COOKIE_SECURE": "0",
         "PEOPS_JWT_SECRET": "test-secret-not-for-prod",
+        # Pin Google OFF for the suite regardless of a developer's local .env
+        # (env vars outrank .env). The default-disabled contract tests rely on
+        # this; the enabled-path tests opt in via _enable_google().
+        "PEOPS_GOOGLE_CLIENT_ID": "",
+        "PEOPS_GOOGLE_CLIENT_SECRET": "",
+        # Enable the demo traffic generator for the telemetry tests. The inline
+        # drift-monitor loop stays OFF (monitor_inline_enabled unset) so passes
+        # only run when a test calls them — keeping alert assertions deterministic.
+        "PEOPS_TELEMETRY_SIM_ENABLED": "1",
     })
 
     # Settings/engine/storage may have been cached by an earlier import — reset.
@@ -149,6 +158,38 @@ def statedict_model(client: TestClient, empty_state: dict, tmp_path_factory) -> 
     assert status["status"] == "completed", status.get("error")
     wait_model_terminal(client, body["modelId"])
     return body
+
+
+@pytest.fixture(scope="session")
+def make_live_model(client: TestClient, empty_state: dict):
+    """Factory: import + complete a FRESH real model and return its body.
+
+    Telemetry/deploy tests use this (not the shared `real_model`) so the events
+    they generate stay isolated to their own model — `real_model` keeps zero
+    traffic, preserving the benchmark-fallback contract tests."""
+    def _make(file_name: str = "live-fixture.onnx") -> dict:
+        r = client.post("/api/models/import", json={"fileName": file_name})
+        assert r.status_code == 200, r.text
+        body = r.json()
+        status = wait_run(client, body["modelId"], body["runId"])
+        assert status["status"] == "completed", status.get("error")
+        client.post(f"/api/models/{body['modelId']}/ingestion/complete")
+        wait_model_terminal(client, body["modelId"])
+        return body
+
+    return _make
+
+
+@pytest.fixture
+def deploy_model(client: TestClient):
+    """Factory: deploy a model and return (deployment_id, plaintext_api_key)."""
+    def _deploy(model_id: str, region: str = "ap-northeast-2") -> tuple[str, str]:
+        r = client.post(f"/api/models/{model_id}/deployments", json={"region": region})
+        assert r.status_code == 200, r.text
+        data = r.json()
+        return data["deployment"]["id"], data["apiKey"]
+
+    return _deploy
 
 
 @pytest.fixture(scope="session")
