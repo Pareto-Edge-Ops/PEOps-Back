@@ -119,6 +119,21 @@ async def run_pipeline_task(ctx: dict, **payload) -> None:
         clear_cancel(run_id)
 
 
+def run_monitor_once() -> dict:
+    """One synchronous drift-monitor pass (shared by the arq cron + inline loop)."""
+    from app.db import open_session
+    from app.services.drift_monitor import drift_monitor_pass
+
+    with open_session() as session:
+        return drift_monitor_pass(session)
+
+
+async def run_drift_monitor(ctx: dict) -> None:
+    """arq cron entrypoint — refresh live deployment metrics + raise drift alerts."""
+    loop = asyncio.get_event_loop()
+    await loop.run_in_executor(None, run_monitor_once)
+
+
 async def _worker_startup(ctx: dict) -> None:
     # The worker is a fresh process: make sure the DB schema + storage exist.
     from app.db import get_engine, init_db
@@ -130,10 +145,19 @@ async def _worker_startup(ctx: dict) -> None:
     get_storage()
 
 
+def _cron_jobs():
+    # Default `second=0` → fires once per minute; refreshes live deployment
+    # metrics and raises drift alerts from real inference_events.
+    from arq import cron
+
+    return [cron(run_drift_monitor, run_at_startup=True)]
+
+
 class WorkerSettings:
     """`arq app.services.queue.WorkerSettings` — the worker process entrypoint."""
 
     functions = [run_pipeline_task]
+    cron_jobs = _cron_jobs()
     on_startup = _worker_startup
     redis_settings = _redis_settings()
     max_jobs = get_settings().job_workers
