@@ -7,6 +7,8 @@ the httpOnly session cookie is sent with every request.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import logging
 from contextlib import asynccontextmanager
 
@@ -23,6 +25,21 @@ from app.seed import seed_if_empty
 from app.services.limits import limiter
 
 log = logging.getLogger("peops")
+
+
+async def _inline_monitor_loop() -> None:
+    """Single-box / demo drift monitor. In scaled deploys the arq worker runs the
+    monitor via its cron instead; here we tick it from the API process. Gated on
+    telemetry_sim_enabled so the test suite stays deterministic."""
+    from app.services.queue import run_monitor_once
+
+    settings = get_settings()
+    while True:
+        await asyncio.sleep(max(5, settings.monitor_interval_sec))
+        try:
+            await asyncio.get_event_loop().run_in_executor(None, run_monitor_once)
+        except Exception:  # noqa: BLE001 — a bad pass must not kill the loop
+            log.exception("inline drift monitor pass failed")
 
 
 @asynccontextmanager
@@ -42,7 +59,17 @@ async def lifespan(app: FastAPI):
     log.info("PEOps backend ready (db=%s storage=%s inline_jobs=%s)",
              "sqlite" if settings.is_sqlite else "postgres",
              settings.storage_backend, settings.inline_jobs)
-    yield
+
+    monitor_task: asyncio.Task | None = None
+    if settings.monitor_inline_enabled:
+        monitor_task = asyncio.create_task(_inline_monitor_loop())
+    try:
+        yield
+    finally:
+        if monitor_task is not None:
+            monitor_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await monitor_task
 
 
 def create_app() -> FastAPI:
@@ -73,6 +100,8 @@ def create_app() -> FastAPI:
         architecture,
         auth,
         dashboard,
+        deployments,
+        infer,
         ingestion,
         models,
         pareto,
@@ -83,12 +112,17 @@ def create_app() -> FastAPI:
     api = APIRouter(prefix="/api")
     # Public — issues/clears the session cookie.
     api.include_router(auth.router)
+    # Public — the served inference endpoint authenticates with a deployment
+    # API key (Authorization: Bearer …), NOT the browser session cookie. This
+    # is the real-user traffic path; it must sit outside the cookie gate.
+    api.include_router(infer.router)
     # Every other router requires a valid session. Handlers that scope by owner
     # also inject CurrentUser; this router-level gate is defense-in-depth so a
     # newly added endpoint can never be unintentionally public.
     protected = [Depends(get_current_user)]
     api.include_router(dashboard.router, dependencies=protected)
     api.include_router(models.router, dependencies=protected)
+    api.include_router(deployments.router, dependencies=protected)
     api.include_router(ingestion.router, dependencies=protected)
     api.include_router(architecture.router, dependencies=protected)
     api.include_router(pareto.router, dependencies=protected)
