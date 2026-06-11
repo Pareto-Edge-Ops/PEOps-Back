@@ -61,9 +61,10 @@ def client(tmp_path_factory: pytest.TempPathFactory) -> Iterator[TestClient]:
         "PEOPS_GOOGLE_CLIENT_ID": "",
         "PEOPS_GOOGLE_CLIENT_SECRET": "",
         # Enable the demo traffic generator for the telemetry tests. The inline
-        # drift-monitor loop stays OFF (monitor_inline_enabled unset) so passes
+        # drift-monitor loop is pinned OFF (production default is ON) so passes
         # only run when a test calls them — keeping alert assertions deterministic.
         "PEOPS_TELEMETRY_SIM_ENABLED": "1",
+        "PEOPS_MONITOR_INLINE_ENABLED": "0",
     })
 
     # Settings/engine/storage may have been cached by an earlier import — reset.
