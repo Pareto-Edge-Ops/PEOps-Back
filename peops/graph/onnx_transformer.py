@@ -18,14 +18,65 @@ from peops.core.compression_actions import ConcreteAction
 from peops.graph.onnx_analyzer import OperatorCategory
 
 
+# Execution order for actions within a single apply() pass. Quantization must
+# run last: earlier phases (fusion/pruning/SVD) look up weights by their
+# original names and need full-precision values to operate on.
+_ACTION_PHASE: dict[str, int] = {
+    "bn_fusion": 0,
+    "channel_pruning": 1,
+    "tree_pruning": 1,
+    "feature_pruning": 1,
+    "support_vector_pruning": 1,
+    "depth_limiting": 1,
+    "low_rank_svd": 2,
+    "leaf_merging": 2,
+    "quantization": 3,
+    "param_quantization": 3,
+    "embedding_quantization": 3,
+    "coefficient_quantization": 3,
+    "leaf_quantization": 3,
+}
+
+# Initializers smaller than this are left untouched by weight quantization:
+# the byte payoff is negligible and the graph noise (extra Cast/DQ nodes) isn't.
+_MIN_QUANT_BYTES = 1024
+
+
 class OnnxTransformer:
-    """Applies compression transformations to ONNX models."""
+    """Applies compression transformations to ONNX models.
+
+    Weight quantization stores REAL reduced-precision bytes: FP16 weights are
+    kept as float16 initializers behind a Cast node, INT8/INT4 weights as int8
+    initializers behind a DequantizeLinear node. File size genuinely shrinks
+    (~2x / ~4x for the converted tensors) while every consumer node keeps its
+    original input name, so the graph stays runnable by onnxruntime (which
+    constant-folds the Cast/DequantizeLinear at session load).
+    """
 
     def apply(self, model: onnx.ModelProto, actions: list[ConcreteAction]) -> onnx.ModelProto:
         result = onnx.ModelProto()
         result.CopyFrom(model)
 
-        for action in actions:
+        # Shared initializers must be converted at most once per pass.
+        self._converted_inits: set[str] = set()
+        self._int8_unavailable = False
+
+        # DequantizeLinear needs opset >= 10 (>= 13 for per-axis). Old models
+        # are upgraded once; if the version converter can't handle the graph,
+        # int8 actions degrade to fp16 storage (still real 2x bytes).
+        wants_int8 = any(
+            a.parameters.get("target_dtype") in ("INT8", "INT4")
+            for a in actions
+            if a.action_type in ("quantization", "param_quantization", "embedding_quantization")
+        )
+        if wants_int8 and self._model_opset(result) < 10:
+            try:
+                result = onnx.version_converter.convert_version(result, 13)
+            except Exception:
+                self._int8_unavailable = True
+
+        ordered = sorted(actions, key=lambda a: _ACTION_PHASE.get(a.action_type, 2))
+        for action in ordered:
             handler = self._get_handler(action)
             if handler is not None:
                 result = handler(result, action)
@@ -60,34 +111,128 @@ class OnnxTransformer:
     def _apply_weight_quantization(
         self, model: onnx.ModelProto, action: ConcreteAction,
     ) -> onnx.ModelProto:
-        """Quantize weight initializers for Conv/MatMul/Gemm operators."""
+        """Quantize weight initializers with REAL reduced-precision storage.
+
+        FP16: float32 initializer -> float16 initializer `{name}_fp16` + a
+        Cast(to=FLOAT) node that re-exposes the original tensor name.
+        INT8:  -> int8 initializer `{name}_q` + scale/zero-point + a
+        DequantizeLinear node re-exposing the original name. Per-channel
+        (axis=0) for 4-D Conv weights when the opset allows, per-tensor
+        otherwise.
+        INT4: stored as int8 restricted to 16 levels (sub-byte packing needs
+        opset >= 21, which the supported model zoo predates) — an honest 4x,
+        never advertised as 8x.
+
+        Biases and other 1-D tensors are excluded from integer quantization
+        (disproportionate accuracy damage for negligible bytes); FP16 applies
+        to any float32 tensor above the size floor.
+        """
         target_dtype = action.parameters.get("target_dtype", "FP16")
+        if target_dtype not in ("FP16", "INT8", "INT4"):
+            return model
         node = self._find_node(model, action.operator_name)
         if node is None:
             return model
 
-        for inp_name in node.input:
+        for inp_name in list(node.input):
+            if inp_name in self._converted_inits:
+                continue
             init = self._find_initializer(model, inp_name)
             if init is None:
                 continue
+            if init.data_type != TensorProto.FLOAT:
+                continue  # already reduced or non-float (e.g. int indices)
             arr = numpy_helper.to_array(init)
-            if target_dtype == "FP16":
-                quantized = arr.astype(np.float16).astype(np.float32)
-            elif target_dtype == "INT8":
-                scale = np.abs(arr).max() / 127.0 + 1e-12
-                quantized = np.round(arr / scale).clip(-127, 127).astype(np.int8)
-                quantized = quantized.astype(np.float32) * scale
-            elif target_dtype == "INT4":
-                scale = np.abs(arr).max() / 7.0 + 1e-12
-                quantized = np.round(arr / scale).clip(-7, 7).astype(np.int8)
-                quantized = quantized.astype(np.float32) * scale
-            else:
+            if arr.nbytes < _MIN_QUANT_BYTES:
+                continue
+            if target_dtype in ("INT8", "INT4") and arr.ndim < 2:
                 continue
 
-            new_init = numpy_helper.from_array(quantized, name=init.name)
-            self._replace_initializer(model, init.name, new_init)
+            if target_dtype == "FP16":
+                self._store_fp16(model, init, arr)
+            else:
+                self._store_int8(model, init, arr, target_dtype, node)
+            self._converted_inits.add(inp_name)
 
         return model
+
+    def _store_fp16(
+        self, model: onnx.ModelProto, init: onnx.TensorProto, arr: np.ndarray,
+    ) -> None:
+        """Replace a float32 initializer with float16 storage + Cast node."""
+        fp16_name = self._unique_name(model, f"{init.name}_fp16")
+        fp16_init = numpy_helper.from_array(arr.astype(np.float16), name=fp16_name)
+
+        cast = onnx.helper.make_node(
+            "Cast",
+            inputs=[fp16_name],
+            outputs=[init.name],
+            name=self._unique_name(model, f"{init.name}_fp16_cast"),
+            to=TensorProto.FLOAT,
+        )
+        self._remove_initializer(model, init.name)
+        model.graph.initializer.append(fp16_init)
+        model.graph.node.insert(0, cast)
+
+    def _store_int8(
+        self,
+        model: onnx.ModelProto,
+        init: onnx.TensorProto,
+        arr: np.ndarray,
+        target_dtype: str,
+        consumer: onnx.NodeProto,
+    ) -> None:
+        """Replace a float32 initializer with int8 storage + DequantizeLinear."""
+        if self._int8_unavailable or self._model_opset(model) < 10:
+            # DequantizeLinear unavailable at this opset: fp16 storage is the
+            # best real-bytes reduction that stays valid (still 2x).
+            self._store_fp16(model, init, arr)
+            return
+
+        qmax = 127.0 if target_dtype == "INT8" else 7.0
+
+        per_channel = (
+            consumer.op_type == "Conv"
+            and arr.ndim == 4
+            and self._model_opset(model) >= 13
+            and arr.shape[0] > 1
+        )
+        if per_channel:
+            axes = tuple(range(1, arr.ndim))
+            scale = np.abs(arr).max(axis=axes) / qmax + 1e-12  # [C_out]
+            q = np.round(arr / scale.reshape(-1, *([1] * (arr.ndim - 1))))
+            scale_arr = scale.astype(np.float32)
+            zp_arr = np.zeros(arr.shape[0], dtype=np.int8)
+        else:
+            scale = np.abs(arr).max() / qmax + 1e-12
+            q = np.round(arr / scale)
+            scale_arr = np.float32(scale)
+            zp_arr = np.int8(0)
+
+        q = q.clip(-qmax, qmax).astype(np.int8)
+
+        q_name = self._unique_name(model, f"{init.name}_q")
+        scale_name = self._unique_name(model, f"{init.name}_scale")
+        zp_name = self._unique_name(model, f"{init.name}_zp")
+
+        dq_kwargs: dict[str, Any] = {}
+        if per_channel:
+            dq_kwargs["axis"] = 0
+        dq = onnx.helper.make_node(
+            "DequantizeLinear",
+            inputs=[q_name, scale_name, zp_name],
+            outputs=[init.name],
+            name=self._unique_name(model, f"{init.name}_dq"),
+            **dq_kwargs,
+        )
+
+        self._remove_initializer(model, init.name)
+        model.graph.initializer.append(numpy_helper.from_array(q, name=q_name))
+        model.graph.initializer.append(
+            numpy_helper.from_array(np.asarray(scale_arr, dtype=np.float32), name=scale_name))
+        model.graph.initializer.append(
+            numpy_helper.from_array(np.asarray(zp_arr, dtype=np.int8), name=zp_name))
+        model.graph.node.insert(0, dq)
 
     def _apply_channel_pruning(
         self, model: onnx.ModelProto, action: ConcreteAction,
@@ -345,7 +490,12 @@ class OnnxTransformer:
     def _apply_leaf_quantization(
         self, model: onnx.ModelProto, action: ConcreteAction,
     ) -> onnx.ModelProto:
-        """Quantize leaf values in TreeEnsemble to FP16."""
+        """Quantize leaf values in TreeEnsemble to FP16.
+
+        SIZE-NEUTRAL: ai.onnx.ml attributes are stored as protobuf FLOATS
+        (fixed 4-byte storage), so this affects fidelity/robustness only —
+        it can never shrink the file. Excluded from size accounting.
+        """
         node = self._find_node_by_type(model, action.operator_name, action.op_type)
         if node is None:
             return model
@@ -470,7 +620,11 @@ class OnnxTransformer:
     def _apply_coefficient_quantization(
         self, model: onnx.ModelProto, action: ConcreteAction,
     ) -> onnx.ModelProto:
-        """Quantize coefficients in LinearClassifier/LinearRegressor."""
+        """Quantize coefficients in LinearClassifier/LinearRegressor.
+
+        SIZE-NEUTRAL: protobuf FLOATS attributes keep 4-byte storage regardless
+        of value precision; this is a fidelity/accuracy trade-off knob only.
+        """
         node = self._find_node_by_type(model, action.operator_name, action.op_type)
         if node is None:
             return model
@@ -577,6 +731,37 @@ class OnnxTransformer:
             if init.name == name:
                 model.graph.initializer[i].CopyFrom(new_init)
                 return
+
+    def _remove_initializer(self, model: onnx.ModelProto, name: str) -> None:
+        """Remove an initializer (and any matching graph input declaration)."""
+        for i, init in enumerate(model.graph.initializer):
+            if init.name == name:
+                del model.graph.initializer[i]
+                break
+        # Older opsets may also declare initializers as graph inputs; the name
+        # is now produced by a Cast/DequantizeLinear node instead.
+        for i, inp in enumerate(model.graph.input):
+            if inp.name == name:
+                del model.graph.input[i]
+                break
+
+    @staticmethod
+    def _unique_name(model: onnx.ModelProto, candidate: str) -> str:
+        existing = {init.name for init in model.graph.initializer}
+        existing.update(n.name for n in model.graph.node)
+        name = candidate
+        suffix = 2
+        while name in existing:
+            name = f"{candidate}_{suffix}"
+            suffix += 1
+        return name
+
+    @staticmethod
+    def _model_opset(model: onnx.ModelProto) -> int:
+        for imp in model.opset_import:
+            if imp.domain in ("", "ai.onnx"):
+                return imp.version
+        return 0
 
     @staticmethod
     def _get_node_attr(

@@ -396,3 +396,22 @@ class OnnxAnalyzer:
                         queue.append(succ)
 
         return result
+
+
+def initializer_bytes(model: onnx.ModelProto) -> int:
+    """Total stored bytes of all weight initializers (weights-only size).
+
+    Unlike ``ModelProto.ByteSize()`` this excludes graph structure and
+    ai.onnx.ml attribute payloads, so it isolates the part of the file that
+    weight quantization can actually shrink.
+    """
+    total = 0
+    for init in model.graph.initializer:
+        if init.raw_data:
+            total += len(init.raw_data)
+        else:
+            try:
+                total += numpy_helper.to_array(init).nbytes
+            except Exception:
+                continue
+    return total

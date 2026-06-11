@@ -27,6 +27,7 @@ dependencies = [
 # the engine never imports xgboost/onnxmltools, so they are intentionally omitted.
 engine = [
     "onnx>=1.16.0",
+    "onnxconverter-common>=1.14",
     "onnxruntime>=1.18.0",
     "optuna>=3.6.0",
     "scikit-learn>=1.5.0",
@@ -37,6 +38,7 @@ engine = [
 # directly and never hits the sklearn-pickle path, so skl2onnx is unnecessary.
 test-engine = [
     "onnx>=1.16.0",
+    "onnxconverter-common>=1.14",
     "onnxruntime>=1.18.0",
     "optuna>=3.6.0",
     "scikit-learn>=1.5.0",

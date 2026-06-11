@@ -66,10 +66,24 @@ _ML_CATEGORIES = (
 
 RUNG_INT8_UNIFORM = "INT8_uniform"
 RUNG_INT8_UOSA = "INT8_uosa_mixed"
+RUNG_W8 = "W8_weight_only"
 RUNG_FP16 = "FP16"
 RUNG_ORIGINAL = "ORIGINAL"
 
-LADDER = [RUNG_INT8_UNIFORM, RUNG_INT8_UOSA, RUNG_FP16, RUNG_ORIGINAL]
+# v1: the ladder validated in the 2026-06-06 guarantee experiments (18-model
+# zoo, 0/18 violations). Kept as the default so published claims stay tied to
+# the exact configuration that produced them.
+LADDER_V1 = [RUNG_INT8_UNIFORM, RUNG_INT8_UOSA, RUNG_FP16, RUNG_ORIGINAL]
+# v2 adds W8 (weight-only INT8 QDQ storage — ~4x weight bytes, no activation
+# quantization) between the dynamic-INT8 rungs and FP16: more aggressive than
+# FP16 in size, typically higher fidelity than dynamic INT8 because
+# activations stay fp32. Candidates that inflated under dynamic INT8
+# (RandTransformer 1.30x) or failed its fidelity gate (GRU) get a real
+# compression path before falling back.
+LADDER_V2 = [RUNG_INT8_UNIFORM, RUNG_INT8_UOSA, RUNG_W8, RUNG_FP16, RUNG_ORIGINAL]
+LADDERS = {"v1": LADDER_V1, "v2": LADDER_V2}
+
+LADDER = LADDER_V1  # backward-compatible alias
 
 
 @dataclass
@@ -181,6 +195,29 @@ def _convert_fp16_real(model: onnx.ModelProto) -> onnx.ModelProto:
     return float16.convert_float_to_float16(model, keep_io_types=True)
 
 
+def _quantize_w8_weight_only(
+    model: onnx.ModelProto,
+    graph_info: GraphInfo,
+) -> onnx.ModelProto | None:
+    """Weight-only INT8 QDQ storage for standard-domain dense/embedding ops.
+
+    Weights are stored as int8 initializers behind DequantizeLinear (~4x byte
+    reduction); activations are untouched, so compute runs at fp32 fidelity.
+    Returns None when no standard-domain weight surface exists.
+    """
+    translator = ActionTranslator()
+    transformer = OnnxTransformer()
+    actions = []
+    for op in graph_info.compressible_operators:
+        if op.category not in (OperatorCategory.DENSE_COMPUTE, OperatorCategory.EMBEDDING):
+            continue
+        actions.extend(
+            translator.translate(op, CompressionConfig(precision_level=PrecisionLevel.INT8)))
+    if not actions:
+        return None
+    return transformer.apply(model, actions)
+
+
 def _build_candidate(
     rung: str,
     model: onnx.ModelProto,
@@ -203,6 +240,10 @@ def _build_candidate(
         if not profile.results:
             return None
         protected = profile.get_protection_set(top_p=top_p)
+    elif rung == RUNG_W8:
+        if not has_standard:
+            return None  # weight-only path needs standard-domain weights
+        return _quantize_w8_weight_only(model, graph_info)
     elif rung == RUNG_FP16:
         if has_standard:
             return _convert_fp16_real(model)
@@ -218,6 +259,46 @@ def _build_candidate(
     return candidate
 
 
+def build_gate_probes(
+    model: onnx.ModelProto,
+    input_spec: dict[str, list[int]],
+    architecture: ArchitectureType | None = None,
+    n_probes: int = 64,
+    seed: int = 42,
+    n_gate_draws: int = 3,
+) -> list[dict[str, np.ndarray]]:
+    """Pooled gate probe set: k independent draws (seeds disjoint from the
+    UOSA seed) concatenated into one large set — low-variance OFS estimate."""
+    gate_probes: list[dict[str, np.ndarray]] = []
+    for i in range(max(1, n_gate_draws)):
+        gen = CalibrationGenerator(n_probes=n_probes, seed=seed + 7919 * (i + 1))
+        gate_probes.extend(gen.generate(model, input_spec, architecture).probes)
+    return gate_probes
+
+
+def gate_check(
+    original: onnx.ModelProto,
+    candidate: onnx.ModelProto,
+    gate_probes: list[dict[str, np.ndarray]],
+    input_spec: dict[str, list[int]] | None = None,
+    architecture: ArchitectureType | None = None,
+    seed: int = 42,
+) -> tuple[float, float]:
+    """(OFS, Q) of a candidate on the pooled gate probes (error → 0.0).
+
+    The same check guarantee_compress applies per rung — exposed so callers
+    can certify externally-built candidates (e.g. Pareto picks) against the
+    identical gate before serving them.
+    """
+    validator = CompressionValidator(n_probes=len(gate_probes), seed=seed)
+    try:
+        vr = validator.validate(original, candidate, input_spec,
+                                architecture, probes=gate_probes)
+        return vr.output_fidelity, vr.quality_score
+    except Exception:
+        return 0.0, 0.0
+
+
 def guarantee_compress(
     model: onnx.ModelProto,
     tau: float = 0.95,
@@ -229,6 +310,8 @@ def guarantee_compress(
     profile: SensitivityProfile | None = None,
     architecture: ArchitectureType | None = None,
     input_spec: dict[str, list[int]] | None = None,
+    ladder: str | list[str] = "v1",
+    gate_probes: list[dict[str, np.ndarray]] | None = None,
     verbose: bool = False,
 ) -> GuaranteeResult:
     """Compress with a structural fidelity guarantee.
@@ -237,11 +320,20 @@ def guarantee_compress(
     OFS >= tau on a pooled gate probe set (`n_gate_draws` independent draws of
     `n_probes` each) AND is strictly smaller than the original. Falls back to
     the original model (always admissible).
+
+    `ladder` selects the rung sequence: "v1" (validated 2026-06-06 zoo
+    configuration, default) or "v2" (adds the W8 weight-only rung); a custom
+    rung list may be passed directly. Passing `gate_probes` reuses an
+    externally built pooled probe set (see `build_gate_probes`).
     """
     if graph_info is None:
         graph_info = OnnxAnalyzer().analyze(model)
     if input_spec is None:
         input_spec = _extract_input_spec(model)
+
+    rungs = LADDERS[ladder] if isinstance(ladder, str) else list(ladder)
+    if rungs[-1] != RUNG_ORIGINAL:
+        rungs = rungs + [RUNG_ORIGINAL]
 
     uosa_time_ms = 0.0
     if profile is None:
@@ -251,28 +343,19 @@ def guarantee_compress(
         profile = compute_uosa(model, probes_uosa, graph_info, seed=seed)
         uosa_time_ms = (time.time() - t0) * 1000
 
-    # Pooled gate probe set: k independent draws (seeds disjoint from the
-    # UOSA seed) concatenated into one large set — low-variance OFS estimate.
-    gate_probes: list[dict[str, np.ndarray]] = []
-    for i in range(max(1, n_gate_draws)):
-        gen = CalibrationGenerator(n_probes=n_probes, seed=seed + 7919 * (i + 1))
-        gate_probes.extend(gen.generate(model, input_spec, architecture).probes)
+    if gate_probes is None:
+        gate_probes = build_gate_probes(
+            model, input_spec, architecture,
+            n_probes=n_probes, seed=seed, n_gate_draws=n_gate_draws)
 
     def gate_ofs(candidate: onnx.ModelProto) -> tuple[float, float]:
-        """OFS / Q on the pooled gate probes (error → 0.0)."""
-        validator = CompressionValidator(n_probes=len(gate_probes), seed=seed)
-        try:
-            vr = validator.validate(model, candidate, input_spec,
-                                    architecture, probes=gate_probes)
-            return vr.output_fidelity, vr.quality_score
-        except Exception:
-            return 0.0, 0.0
+        return gate_check(model, candidate, gate_probes, input_spec, architecture, seed)
 
     n_gate_probes = len(gate_probes)
     orig_size = model.ByteSize()
     reports: list[RungReport] = []
 
-    for rung in LADDER[:-1]:
+    for rung in rungs[:-1]:
         try:
             candidate = _build_candidate(rung, model, graph_info, profile, top_p)
         except Exception as e:

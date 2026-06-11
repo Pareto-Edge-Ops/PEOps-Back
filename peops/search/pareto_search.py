@@ -23,8 +23,22 @@ from peops.core.compression_actions import (
     get_action_space,
 )
 from peops.core.uosa import SensitivityProfile
-from peops.graph.onnx_analyzer import GraphInfo, OnnxAnalyzer, OperatorInfo
+from peops.graph.onnx_analyzer import (
+    GraphInfo,
+    OnnxAnalyzer,
+    OperatorCategory,
+    OperatorInfo,
+    initializer_bytes,
+)
 from peops.graph.onnx_transformer import OnnxTransformer
+
+# Categories whose "fuse" flag maps to a real transformer handler
+# (bn_fusion / leaf_merging). For every other category the fuse action is a
+# no-op, so searching it would only waste TPE dimensions.
+_FUSE_EFFECTIVE_CATEGORIES = frozenset({
+    OperatorCategory.NORMALIZATION,
+    OperatorCategory.TREE_ENSEMBLE,
+})
 
 
 @dataclass
@@ -38,6 +52,8 @@ class ParetoPoint:
     accuracy_retention: float
     size_ratio: float
     speedup: float
+    weights_bytes: int = 0
+    weights_ratio: float = 1.0
 
 
 @dataclass
@@ -103,21 +119,28 @@ class ParetoSearch:
         if not compressible:
             raise ValueError("No compressible operators found")
 
-        normalized = sensitivity.normalized_scores()
-
         # Baseline measurements
         original_acc = eval_fn(model)
         original_size = model.ByteSize()
+        original_weights = max(1, initializer_bytes(model))
         original_latency = self._measure_latency(model, calibration_input)
 
         if self.verbose:
             print(f"  Baseline: acc={original_acc:.4f}, size={original_size}B, lat={original_latency:.2f}ms")
 
-        # Build per-operator action spaces
+        # Build per-operator action spaces. Protection is rank-based top-p
+        # membership (the configuration validated in the guarantee experiments),
+        # and negligible-byte operators collapse to singleton spaces so TPE
+        # spends its budget on layers that can actually move the size objective.
+        protected = sensitivity.get_protection_set(top_p=0.3)
+        total_params = max(1, sum(op.param_count for op in graph_info.operators))
         action_spaces = {}
         for op in compressible:
-            s = normalized.get(op.name, 0)
-            action_spaces[op.name] = get_action_space(op, sensitivity=s, sensitivity_threshold=0.3)
+            action_spaces[op.name] = get_action_space(
+                op,
+                is_protected=op.name in protected,
+                param_share=op.param_count / total_params,
+            )
 
         all_trials: list[ParetoPoint] = []
 
@@ -134,10 +157,14 @@ class ParetoSearch:
             for op in compressible:
                 space = action_spaces[op.name]
 
-                precision_choices = [p.value for p in space.allowed_precisions]
-                precision_val = trial.suggest_categorical(
-                    f"{op.name}_precision", precision_choices)
-                precision = PrecisionLevel(precision_val)
+                if len(space.allowed_precisions) == 1:
+                    # Singleton space: fixed config, no search dimension.
+                    precision = space.allowed_precisions[0]
+                else:
+                    precision_choices = [p.value for p in space.allowed_precisions]
+                    precision_val = trial.suggest_categorical(
+                        f"{op.name}_precision", precision_choices)
+                    precision = PrecisionLevel(precision_val)
 
                 if self.allow_pruning:
                     prune_lo, prune_hi = space.prune_ratio_range
@@ -146,8 +173,11 @@ class ParetoSearch:
                 else:
                     prune_ratio = 0.0
 
-                fuse = trial.suggest_categorical(
-                    f"{op.name}_fuse", [True, False]) if space.fuse_available else False
+                fuse = (
+                    trial.suggest_categorical(f"{op.name}_fuse", [True, False])
+                    if space.fuse_available and op.category in _FUSE_EFFECTIVE_CATEGORIES
+                    else False
+                )
 
                 config[op.name] = CompressionConfig(
                     precision_level=precision,
@@ -174,6 +204,7 @@ class ParetoSearch:
                 return 0.0, float(original_size), original_latency * 10
 
             size = float(compressed.ByteSize())
+            weights = initializer_bytes(compressed)
             latency = self._measure_latency(compressed, calibration_input)
 
             point = ParetoPoint(
@@ -192,6 +223,8 @@ class ParetoSearch:
                 accuracy_retention=acc / original_acc if original_acc > 0 else 0,
                 size_ratio=size / original_size,
                 speedup=original_latency / latency if latency > 0 else 1.0,
+                weights_bytes=weights,
+                weights_ratio=weights / original_weights,
             )
             all_trials.append(point)
 

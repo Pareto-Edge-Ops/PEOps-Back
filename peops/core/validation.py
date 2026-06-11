@@ -212,8 +212,15 @@ class CompressionValidator:
         per_weight = {}
         for name, orig_w in orig_map.items():
             if name not in comp_map:
-                per_weight[name] = 0.0
-                continue
+                # Real-bytes quantization renames initializers ({name}_fp16 /
+                # {name}_q + scale + zp behind Cast/DequantizeLinear nodes).
+                # Reconstruct the effective fp32 weight so genuinely-quantized
+                # models aren't scored as if the weight vanished.
+                reconstructed = self._reconstruct_quantized_weight(comp_map, name)
+                if reconstructed is None:
+                    per_weight[name] = 0.0
+                    continue
+                comp_map[name] = reconstructed
             comp_w = comp_map[name]
             if orig_w.shape != comp_w.shape:
                 per_weight[name] = 0.0
@@ -315,6 +322,33 @@ class CompressionValidator:
             "prediction_consistency": pred_consistency,
         }
         return sis, detail
+
+    @staticmethod
+    def _reconstruct_quantized_weight(
+        comp_map: dict[str, np.ndarray], name: str,
+    ) -> np.ndarray | None:
+        """Rebuild the effective fp32 weight from real-quant storage tensors."""
+        fp16 = comp_map.get(f"{name}_fp16")
+        if fp16 is not None:
+            return fp16.astype(np.float32)
+
+        q = comp_map.get(f"{name}_q")
+        scale = comp_map.get(f"{name}_scale")
+        if q is None or scale is None:
+            return None
+        zp = comp_map.get(f"{name}_zp")
+        qf = q.astype(np.float32)
+        if zp is not None:
+            zpf = zp.astype(np.float32)
+            if zpf.size == 1:
+                qf = qf - float(zpf.reshape(-1)[0])
+            elif zpf.ndim == 1 and qf.ndim >= 1 and qf.shape[0] == zpf.size:
+                qf = qf - zpf.reshape(-1, *([1] * (qf.ndim - 1)))
+        if scale.size == 1:
+            return qf * float(np.asarray(scale).reshape(-1)[0])
+        if scale.ndim == 1 and qf.ndim >= 1 and qf.shape[0] == scale.size:
+            return qf * scale.astype(np.float32).reshape(-1, *([1] * (qf.ndim - 1)))
+        return None
 
     def _extract_float_attributes(self, model: onnx.ModelProto) -> dict[str, np.ndarray]:
         """Extract FLOATS attributes from ML operators for comparison."""

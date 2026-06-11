@@ -53,10 +53,14 @@ class ActionSpace:
         return CompressionConfig()
 
 
+# INT4 is intentionally absent: TensorProto.INT4 needs opset >= 21 (the
+# supported model zoo is opset 13/14) and sub-byte packing is impossible below
+# that, so INT4 could never deliver real bytes beyond INT8's 4x. The
+# transformer degrades any residual INT4 action to 16-level int8 storage.
 _NEURAL_COMPUTE_ACTIONS = ActionSpace(
     operator_name="",
     category=OperatorCategory.DENSE_COMPUTE,
-    allowed_precisions=[PrecisionLevel.FP32, PrecisionLevel.FP16, PrecisionLevel.INT8, PrecisionLevel.INT4],
+    allowed_precisions=[PrecisionLevel.FP32, PrecisionLevel.FP16, PrecisionLevel.INT8],
     prune_ratio_range=(0.0, 0.9),
     fuse_available=True,
     approx_rank_range=(1, 512),
@@ -127,15 +131,30 @@ _CATEGORY_ACTION_TEMPLATES: dict[OperatorCategory, ActionSpace] = {
 }
 
 
+# Operators holding less than this share of total weight bytes get a singleton
+# action space: compressing them can't move the size needle, so spending Optuna
+# search dimensions on them only dilutes TPE over the layers that matter.
+TINY_OP_BYTES_SHARE = 0.005
+
+
 def get_action_space(
     op: OperatorInfo,
     sensitivity: float | None = None,
     sensitivity_threshold: float = 0.1,
+    is_protected: bool | None = None,
+    param_share: float | None = None,
 ) -> ActionSpace:
     """Get the available compression action space for an operator.
 
-    If sensitivity is provided and exceeds the threshold, the action space is
-    constrained to protect highly-sensitive operators from aggressive compression.
+    Protection semantics (matches the validated UOSA-mixed configuration):
+    pass ``is_protected`` from ``SensitivityProfile.get_protection_set`` —
+    rank-based top-p membership. When ``is_protected`` is None, the legacy
+    normalized-score threshold behavior applies for backward compatibility.
+
+    Byte awareness: ``param_share`` (this op's parameter bytes / total model
+    weight bytes) collapses negligible operators to a singleton space —
+    full INT8 when unprotected, untouched FP32 when protected — removing
+    wasted search dimensions without changing reachable outcomes materially.
     """
     template = _CATEGORY_ACTION_TEMPLATES.get(op.category)
     if template is None:
@@ -153,13 +172,32 @@ def get_action_space(
     fuse_available = template.fuse_available
     approx_range = template.approx_rank_range
 
-    if sensitivity is not None and sensitivity > sensitivity_threshold:
+    if is_protected is None:
+        protected = sensitivity is not None and sensitivity > sensitivity_threshold
+    else:
+        protected = is_protected
+
+    if protected:
         # Highly sensitive: restrict to lighter compression
         allowed_precisions = [p for p in allowed_precisions if p <= PrecisionLevel.FP16]
         if not allowed_precisions:
             allowed_precisions = [PrecisionLevel.FP32]
         max_prune = min(prune_range[1], 0.3)
         prune_range = (prune_range[0], max_prune)
+
+    if (
+        param_share is not None
+        and param_share < TINY_OP_BYTES_SHARE
+        and op.category in (OperatorCategory.DENSE_COMPUTE, OperatorCategory.EMBEDDING)
+    ):
+        if protected:
+            allowed_precisions = [PrecisionLevel.FP32]
+        else:
+            best = max(allowed_precisions)
+            allowed_precisions = [best]
+        prune_range = (0.0, 0.0)
+        fuse_available = False
+        approx_range = None
 
     return ActionSpace(
         operator_name=op.name,
