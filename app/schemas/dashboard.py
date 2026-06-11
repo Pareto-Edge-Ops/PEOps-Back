@@ -25,6 +25,9 @@ class KpiSummary(BaseModel):
     completedThisWeek: KpiBlock
     liveDeployments: KpiBlock
     computeUsed: ComputeUsed
+    # Which window deltas/counts were computed over ("7d", "30d", ...) — the SPA
+    # renders this instead of hardcoding "this week"/"last 30 days".
+    periodLabel: str = "7d"
 
 
 class DashboardRun(BaseModel):
@@ -73,6 +76,8 @@ class CostSegment(BaseModel):
 class ComputeCost(BaseModel):
     usedGpuHours: float
     quotaGpuHours: float
+    # Window the hours were measured over — real label, not hardcoded UI text.
+    periodLabel: str = "this month"
     # No real cloud billing exists for local compute — absent, never invented.
     costUsd: float | None = None
     region: str | None = None

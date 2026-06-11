@@ -70,21 +70,28 @@ def _daily_spark(timestamps: list[str], days: int = 16) -> list[Spark]:
     ]
 
 
-def _week_delta(timestamps: list[str]) -> str:
-    """Real this-week vs last-week event-count comparison."""
+_RANGE_DAYS = {"1d": 1, "7d": 7, "30d": 30, "90d": 90}
+
+
+def _range_delta(timestamps: list[str], days: int, label: str) -> str:
+    """Real current-window vs previous-window event-count comparison."""
     now = datetime.now(timezone.utc)
-    this_week = last_week = 0
+    current = previous = 0
     for ts in timestamps:
         dt = _parse_iso(ts)
         if dt is None:
             continue
         age_days = (now - dt).total_seconds() / 86400
-        if age_days < 7:
-            this_week += 1
-        elif age_days < 14:
-            last_week += 1
-    diff = this_week - last_week
-    return f"{diff:+d} vs last week"
+        if age_days < days:
+            current += 1
+        elif age_days < 2 * days:
+            previous += 1
+    diff = current - previous
+    return f"{diff:+d} vs previous {label}"
+
+
+def _week_delta(timestamps: list[str]) -> str:
+    return _range_delta(timestamps, 7, "7d")
 
 
 def _run_started_timestamps(session: Session, user_id: str) -> list[str]:
@@ -101,8 +108,11 @@ def _run_completed_timestamps(session: Session, user_id: str) -> list[str]:
     return [r.timestamp for r in rows]
 
 
-def _real_compute_hours(session: Session, user_id: str) -> float:
-    """Sum of real wall-clock durations of finished ingestion runs."""
+def _real_compute_hours(
+    session: Session, user_id: str, since: datetime | None = None,
+) -> float:
+    """Sum of real wall-clock durations of finished ingestion runs
+    (optionally only runs that started after `since`)."""
     rows = session.exec(
         select(IngestionRunRow).where(IngestionRunRow.user_id == user_id)
     ).all()
@@ -112,6 +122,8 @@ def _real_compute_hours(session: Session, user_id: str) -> float:
             continue
         start, end = _parse_iso(r.started_at), _parse_iso(r.finished_at)
         if start and end and end > start:
+            if since is not None and start < since:
+                continue
             total_sec += (end - start).total_seconds()
     return round(total_sec / 3600, 6)
 
@@ -119,9 +131,13 @@ def _real_compute_hours(session: Session, user_id: str) -> float:
 @router.get("/summary")
 def summary(
     current_user: CurrentUser,
+    range: str = Query(default="7d"),  # noqa: A002 — public URL param name
     session: Session = Depends(get_session),
 ) -> KpiSummary:
     uid = current_user.id
+    days = _RANGE_DAYS.get(range, 7)
+    label = range if range in _RANGE_DAYS else "7d"
+
     runs = session.exec(select(RunRow).where(RunRow.user_id == uid)).all()
     deployments = session.exec(
         select(DeploymentRow).where(DeploymentRow.user_id == uid)
@@ -132,31 +148,42 @@ def summary(
     now = datetime.now(timezone.utc)
     started = _run_started_timestamps(session, uid)
     completed = _run_completed_timestamps(session, uid)
-    done_this_week = sum(
+    done_in_range = sum(
         1 for ts in completed
-        if (dt := _parse_iso(ts)) and (now - dt).total_seconds() < 7 * 86400
+        if (dt := _parse_iso(ts)) and (now - dt).total_seconds() < days * 86400
     )
+
+    # Sparks stay a fixed 16-day daily trend (the SPA's sparkline contract);
+    # the range scopes counts and deltas, not the spark window.
+    spark_days = 16
+    deployment_created = [d.created_at for d in deployments if d.created_at]
 
     used = _real_compute_hours(session, uid)
     quota = get_settings().compute_quota_h
+    if quota > 0:
+        progress_note = f"{used / quota * 100:.1f}% of quota"
+    else:
+        progress_note = "no quota configured"
     return KpiSummary(
         activeRuns=KpiBlock(
-            value=active, deltaText=_week_delta(started),
-            spark=_daily_spark(started),
+            value=active, deltaText=_range_delta(started, days, label),
+            spark=_daily_spark(started, days=spark_days),
         ),
         completedThisWeek=KpiBlock(
-            value=done_this_week, deltaText=_week_delta(completed),
-            spark=_daily_spark(completed),
+            value=done_in_range, deltaText=_range_delta(completed, days, label),
+            spark=_daily_spark(completed, days=spark_days),
         ),
         liveDeployments=KpiBlock(
-            value=live, deltaText=f"{live} active now",
-            spark=_daily_spark([]),  # no deployment history events exist yet
+            value=live, deltaText=_range_delta(deployment_created, days, label),
+            spark=_daily_spark(deployment_created, days=spark_days),
         ),
         computeUsed=ComputeUsed(
             used=used, quota=quota,
-            label=f"{used:g} / {quota:g} compute·h",
-            progressNote=f"{(used / quota * 100) if quota else 0:.1f}% of quota",
+            label=f"{used:g} / {quota:g} compute·h" if quota > 0
+                  else f"{used:g} compute·h",
+            progressNote=progress_note,
         ),
+        periodLabel=label,
     )
 
 
@@ -274,7 +301,11 @@ def compute_cost(
     session: Session = Depends(get_session),
 ) -> ComputeCost:
     uid = current_user.id
-    used = _real_compute_hours(session, uid)
+    # Scoped to the current calendar month — the card's "this month" label is
+    # now backed by the actual measurement window.
+    month_start = datetime.now(timezone.utc).replace(
+        day=1, hour=0, minute=0, second=0, microsecond=0)
+    used = _real_compute_hours(session, uid, since=month_start)
     quota = get_settings().compute_quota_h
 
     # Real per-phase wall time aggregated across all benchmark caches.
@@ -296,6 +327,7 @@ def compute_cost(
     ]
     return ComputeCost(
         usedGpuHours=used, quotaGpuHours=quota,
+        periodLabel="this month",
         # No cloud billing exists for local compute — these stay absent
         # rather than invented (costUsd / region / resetDateText / noteText).
         segments=segments,
