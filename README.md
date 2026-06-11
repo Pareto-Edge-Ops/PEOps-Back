@@ -122,7 +122,28 @@ node scripts/contract_check.mjs --base http://localhost:8000 --front ../PEOps-Fr
 # 4) 3D scene 수치 패리티 — front의 실제 mapRange/viridis 함수로 JS에서 재계산해
 #    백엔드 scene 응답과 === 비교 (~16,000개 값)
 node scripts/scene_parity_check.mjs --base http://localhost:8000 --front ../PEOps-Front
+
+# 5) 폐루프 e2e — signup→파이프라인→배포→실추론→KPI/SSE→실알림까지 13개 체크
+python3 scripts/verify_closed_loop.py --base http://localhost:8000
+
+# 6) SDK 타지 검증 — wheel 빌드→fresh venv 설치→로컬 서빙→드리프트 알림 assert
+scripts/verify_sdk_e2e.sh http://localhost:8000
+
+# 7) 실모델 압축 게이트 — test-models 업로드→실압축률/certificate/trial export 검증
+python3 scripts/verify_real_models.py --base http://localhost:8000 \
+    --models squeezenet1.1-7.onnx har-cnn-full.h5
 ```
+
+### 폐루프 & SDK (요약)
+
+- 드리프트 모니터는 기본으로 API 프로세스 안에서 돕니다(`PEOPS_MONITOR_INLINE_ENABLED=1`
+  기본값). arq 워커를 운영하는 스케일드 배포는 0으로 끄고 워커 cron을 사용하세요.
+- 서빙 아티팩트는 guarantee 사다리(OFS≥`PEOPS_TAU`)를 통과한 인증본입니다 —
+  인제스션 로그에 certificate가 남습니다.
+- `clients/python`의 **peops-sdk**(PyPI 배포용)은 `LocalRunner`로 배포 아티팩트를
+  내려받아 로컬 서빙하면서 텔레메트리(지연 분해·시스템 스냅샷·입출력 분포 윈도우)를
+  `/api/v1/telemetry`로 전송합니다 — Telemetry 탭의 SDK clients/breakdown/output
+  패널과 prediction/input drift 알림이 이 데이터로 동작합니다.
 
 ## 디렉토리
 
