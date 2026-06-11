@@ -141,6 +141,57 @@ class InferenceEventRow(SQLModel, table=True):
     error_code: str | None = None             # set on a failed inference
     batch_size: int = 1
     region: str = ""
+    # Where the event was measured: "server" (hosted /v1/infer) or "client"
+    # (peops-sdk serving the artifact locally and shipping telemetry batches).
+    source: str = Field(default="server", index=True)
+    latency_pre_ms: float | None = None       # client-side input preparation
+    latency_post_ms: float | None = None      # client-side output handling
+    client_id: str | None = None              # stable random id per SDK process
+    input_sig: str | None = None              # "input:1x3x224x224:float32" shape signature
+
+
+class TelemetrySnapshotRow(SQLModel, table=True):
+    """Periodic system snapshot from a peops-sdk client serving a deployment
+    locally — host resource usage + runtime fingerprint (every ~30s)."""
+
+    __tablename__ = "telemetry_snapshots"
+    __table_args__ = (
+        Index("ix_snap_dep_ts", "deployment_id", "ts"),
+    )
+
+    pk: int | None = Field(default=None, primary_key=True)
+    user_id: str = Field(default="", index=True)
+    model_id: str = Field(default="", index=True)
+    deployment_id: str = Field(default="", index=True)
+    client_id: str = Field(default="", index=True)
+    ts: str = Field(index=True)
+    cpu_pct: float = 0.0
+    rss_mb: float = 0.0
+    throughput_rpm: float = 0.0
+    dropped_events: int = 0
+    sdk_version: str = ""
+    runtime_json: str = "{}"   # {"python","ort","os","arch","provider","host"}
+
+
+class TelemetryWindowStatsRow(SQLModel, table=True):
+    """Windowed input/output distribution stats from a peops-sdk client —
+    the raw signal for prediction/input drift detection (every ~60s)."""
+
+    __tablename__ = "telemetry_window_stats"
+    __table_args__ = (
+        Index("ix_winstats_dep_start", "deployment_id", "window_start"),
+    )
+
+    pk: int | None = Field(default=None, primary_key=True)
+    user_id: str = Field(default="", index=True)
+    model_id: str = Field(default="", index=True)
+    deployment_id: str = Field(default="", index=True)
+    client_id: str = Field(default="", index=True)
+    window_start: str = Field(index=True)
+    window_end: str = ""
+    n: int = 0
+    input_stats_json: str = "{}"   # {input_name: {mean,std,min,max,nanPct}}
+    output_json: str = "{}"        # {"classDist":{...},"hist":[...],"entropyMean":x,"top1ConfMean":x}
 
 
 class ApiKeyRow(SQLModel, table=True):

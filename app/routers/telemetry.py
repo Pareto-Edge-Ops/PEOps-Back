@@ -23,7 +23,14 @@ from sse_starlette.sse import EventSourceResponse
 from app.auth.dependencies import CurrentUser, current_user_id_for_stream
 from app.config import get_settings, iso
 from app.db import get_session, open_session
-from app.dbmodels import AlertRow, DeploymentRow, ModelRow
+from app.dbmodels import (
+    AlertRow,
+    DeploymentRow,
+    InferenceEventRow,
+    ModelRow,
+    TelemetrySnapshotRow,
+    TelemetryWindowStatsRow,
+)
 from app.repositories import get_cached_result, get_model, owned_model
 from app.schemas.telemetry import (
     Alert,
@@ -117,10 +124,22 @@ def meta(
     deps = session.exec(
         select(DeploymentRow).where(DeploymentRow.model_id == model_id)
     ).all()
+    from app.services.client_telemetry import source_counts
+
+    snap_ts = session.exec(
+        select(TelemetrySnapshotRow.ts)
+        .where(TelemetrySnapshotRow.model_id == model_id)
+        .order_by(TelemetrySnapshotRow.ts.desc())  # type: ignore[attr-defined]
+        .limit(1)
+    ).first()
     return {
         "source": "live" if live else "benchmark",
         "deployments": len(deps),
         "liveDeployments": sum(1 for d in deps if d.status != "paused"),
+        # Honest labeling of where live data comes from: hosted /v1/infer
+        # ("server") vs peops-sdk local serving ("client").
+        "sources": source_counts(session, model_id),
+        "lastSnapshotAt": snap_ts,
     }
 
 
@@ -158,6 +177,162 @@ def alerts(
         Alert(id=a.id, level=a.level, title=a.title, body=a.body, at=a.at)  # type: ignore[arg-type]
         for a in rows
     ]
+
+
+_RANGE_DELTAS = {
+    "1h": 1, "6h": 6, "24h": 24, "7d": 24 * 7, "30d": 24 * 30,  # hours
+}
+
+
+def _range_start(range_key: str) -> str:
+    from datetime import timedelta
+
+    hours = _RANGE_DELTAS.get(range_key, 24)
+    return iso(datetime.now(timezone.utc) - timedelta(hours=hours))
+
+
+@router.get("/clients")
+def clients(
+    model_id: str,
+    current_user: CurrentUser,
+    session: Session = Depends(get_session),
+) -> list[dict]:
+    """SDK client hosts serving this model locally — latest snapshot per client
+    (empty list when no peops-sdk traffic exists; the SPA hides the panel)."""
+    _model(session, model_id, current_user.id)
+    rows = session.exec(
+        select(TelemetrySnapshotRow)
+        .where(TelemetrySnapshotRow.model_id == model_id)
+        .order_by(TelemetrySnapshotRow.ts.desc())  # type: ignore[attr-defined]
+        .limit(500)
+    ).all()
+    latest: dict[str, TelemetrySnapshotRow] = {}
+    for r in rows:
+        if r.client_id not in latest:
+            latest[r.client_id] = r
+    out = []
+    for r in latest.values():
+        try:
+            runtime = json.loads(r.runtime_json)
+        except ValueError:
+            runtime = {}
+        out.append({
+            "clientId": r.client_id,
+            "host": runtime.get("host", ""),
+            "os": runtime.get("os", ""),
+            "arch": runtime.get("arch", ""),
+            "provider": runtime.get("provider", ""),
+            "sdkVersion": r.sdk_version,
+            "ortVersion": runtime.get("ort", ""),
+            "lastSeen": r.ts,
+            "reqPerMin": r.throughput_rpm,
+            "cpuPct": r.cpu_pct,
+            "memMb": r.rss_mb,
+            "droppedEvents": r.dropped_events,
+        })
+    out.sort(key=lambda c: c["lastSeen"], reverse=True)
+    return out
+
+
+@router.get("/breakdown")
+def breakdown(
+    model_id: str,
+    current_user: CurrentUser,
+    # Aliased (not `range` like the sibling routes): this handler needs the
+    # builtin `range()` for bucketing, which the param name would shadow.
+    range_: str = Query(default="24h", alias="range"),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Client-side latency breakdown (preprocess / inference / postprocess) —
+    only SDK events carry the split, so this is empty without client traffic."""
+    _model(session, model_id, current_user.id)
+    start = _range_start(_range(range_))
+    events = session.exec(
+        select(InferenceEventRow)
+        .where(
+            InferenceEventRow.model_id == model_id,
+            InferenceEventRow.source == "client",
+            InferenceEventRow.ts >= start,
+            InferenceEventRow.latency_pre_ms.is_not(None),  # type: ignore[union-attr]
+        )
+        .order_by(InferenceEventRow.ts)  # type: ignore[arg-type]
+    ).all()
+    if not events:
+        return {"points": []}
+    n_buckets = min(48, len(events))
+    size = max(1, len(events) // n_buckets)
+    points = []
+    for i in range(0, len(events), size):
+        chunk = events[i:i + size]
+        m = len(chunk)
+        points.append({
+            "t": chunk[0].ts,
+            "preprocessMs": round(sum(e.latency_pre_ms or 0 for e in chunk) / m, 3),
+            "inferenceMs": round(sum(e.latency_ms for e in chunk) / m, 3),
+            "postprocessMs": round(sum(e.latency_post_ms or 0 for e in chunk) / m, 3),
+        })
+    return {"points": points}
+
+
+@router.get("/output-stats")
+def output_stats(
+    model_id: str,
+    current_user: CurrentUser,
+    range: str = Query(default="24h"),  # noqa: A002
+    session: Session = Depends(get_session),
+) -> dict:
+    """Aggregated output distribution from SDK window stats over the range."""
+    _model(session, model_id, current_user.id)
+    start = _range_start(_range(range))
+    wins = session.exec(
+        select(TelemetryWindowStatsRow)
+        .where(
+            TelemetryWindowStatsRow.model_id == model_id,
+            TelemetryWindowStatsRow.window_start >= start,
+        )
+        .order_by(TelemetryWindowStatsRow.window_start)  # type: ignore[arg-type]
+    ).all()
+    if not wins:
+        return {"bins": [], "meanConfidence": None, "meanEntropy": None,
+                "classDist": [], "windows": 0}
+
+    hist_acc: list[float] = []
+    conf_num = ent_num = total_n = 0.0
+    class_acc: dict[str, float] = {}
+    for w in wins:
+        try:
+            out = json.loads(w.output_json)
+        except ValueError:
+            continue
+        n = max(1, w.n)
+        hist = out.get("hist") or []
+        if hist:
+            if not hist_acc:
+                hist_acc = [0.0] * len(hist)
+            if len(hist) == len(hist_acc):
+                hist_acc = [a + float(h) for a, h in zip(hist_acc, hist)]
+        if out.get("top1ConfMean") is not None:
+            conf_num += float(out["top1ConfMean"]) * n
+        if out.get("entropyMean") is not None:
+            ent_num += float(out["entropyMean"]) * n
+        for cls, frac in (out.get("classDist") or {}).items():
+            class_acc[str(cls)] = class_acc.get(str(cls), 0.0) + float(frac) * n
+        total_n += n
+
+    top_classes = sorted(class_acc.items(), key=lambda kv: -kv[1])[:10]
+    return {
+        "bins": [
+            {"label": f"{i / max(1, len(hist_acc)):.2f}", "count": round(v, 1)}
+            for i, v in enumerate(hist_acc)
+        ],
+        "meanConfidence": round(conf_num / total_n, 4) if total_n and conf_num else None,
+        "meanEntropy": round(ent_num / total_n, 4) if total_n and ent_num else None,
+        "classDist": [
+            {"classIndex": cls, "share": round(v / total_n, 4)}
+            for cls, v in top_classes
+        ] if total_n else [],
+        "windows": len(wins),
+    }
 
 
 class SimulateRequest(BaseModel):

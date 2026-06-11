@@ -28,9 +28,10 @@ log = logging.getLogger("peops")
 
 
 async def _inline_monitor_loop() -> None:
-    """Single-box / demo drift monitor. In scaled deploys the arq worker runs the
-    monitor via its cron instead; here we tick it from the API process. Gated on
-    telemetry_sim_enabled so the test suite stays deterministic."""
+    """Single-box drift monitor (the closed loop's detection half). In scaled
+    deploys the arq worker runs the monitor via its cron instead; here we tick
+    it from the API process. Gated on monitor_inline_enabled (default ON; the
+    test suite pins it off for determinism)."""
     from app.services.queue import run_monitor_once
 
     settings = get_settings()
@@ -99,6 +100,7 @@ def create_app() -> FastAPI:
     from app.routers import (
         architecture,
         auth,
+        client_telemetry,
         dashboard,
         deployments,
         infer,
@@ -116,6 +118,9 @@ def create_app() -> FastAPI:
     # API key (Authorization: Bearer …), NOT the browser session cookie. This
     # is the real-user traffic path; it must sit outside the cookie gate.
     api.include_router(infer.router)
+    # Public — SDK telemetry ingestion + artifact pull, same Bearer-key auth
+    # as /v1/infer (the peops-sdk pip package holds only a deployment key).
+    api.include_router(client_telemetry.router)
     # Every other router requires a valid session. Handlers that scope by owner
     # also inject CurrentUser; this router-level gate is defense-in-depth so a
     # newly added endpoint can never be unintentionally public.

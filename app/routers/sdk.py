@@ -26,6 +26,7 @@ def snippets(session: Session = Depends(get_session)) -> dict[str, SdkSnippet]:
     return {
         r.language: SdkSnippet(language=r.language, filename=r.filename, code=r.code)  # type: ignore[arg-type]
         for r in rows
+        if not r.language.startswith("_")  # "_meta" is the docs version marker
     }
 
 

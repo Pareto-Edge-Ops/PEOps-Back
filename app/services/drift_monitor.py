@@ -8,8 +8,10 @@ past the benchmark baseline or the error rate breaches its threshold (with a
 cooldown so one incident isn't re-alerted every minute).
 
 Scope (locked decision): detection + alerting + live metrics only — no automatic
-re-optimization trigger, no shadow accuracy scoring. Accuracy drift is the static
-benchmark divergence baseline, shown for context, not re-measured from traffic.
+re-optimization trigger. The accuracy_drift COLUMN remains the static benchmark
+divergence (context), but real distribution drift IS detected from SDK-shipped
+window stats: prediction drift (PSI of the output class distribution vs the
+deployment's pinned reference) and input drift (per-input mean shift in sigmas).
 """
 
 from __future__ import annotations
@@ -27,9 +29,12 @@ from app.dbmodels import (
     InferenceEventRow,
     ResultCacheRow,
     TelemetryRollupRow,
+    TelemetryWindowStatsRow,
 )
 
 _ALERT_COOLDOWN_MIN = 15
+_REF_WINDOWS = 5            # earliest windows that form the drift reference
+_WINDOW_FRESH_MIN = 30      # ignore stale windows (client gone quiet)
 
 
 def _pct(values: list[float], q: float) -> float:
@@ -169,6 +174,141 @@ def _upsert_rollups(session: Session, dep: DeploymentRow, events: list[Inference
         session.add(row)
 
 
+def _psi(reference: dict[str, float], current: dict[str, float]) -> float:
+    """Population Stability Index between two class distributions."""
+    import math
+
+    eps = 1e-4
+    keys = set(reference) | set(current)
+    psi = 0.0
+    for k in keys:
+        p = max(reference.get(k, 0.0), eps)
+        q = max(current.get(k, 0.0), eps)
+        psi += (q - p) * math.log(q / p)
+    return psi
+
+
+def _drift_reference(
+    session: Session, dep: DeploymentRow, windows: list[TelemetryWindowStatsRow],
+) -> dict | None:
+    """The drift baseline: mean stats over the EARLIEST windows, cached once.
+
+    Cached in ResultCacheRow(kind="drift_ref_{dep.id}") so the reference stays
+    pinned to the deployment's initial traffic instead of sliding with drift."""
+    import json
+
+    kind = f"drift_ref_{dep.id}"
+    row = session.exec(
+        select(ResultCacheRow).where(
+            ResultCacheRow.model_id == dep.model_id, ResultCacheRow.kind == kind,
+        )
+    ).first()
+    if row:
+        try:
+            return json.loads(row.payload)
+        except ValueError:
+            return None
+    if len(windows) < _REF_WINDOWS:
+        return None  # not enough history to pin a reference yet
+
+    ref_windows = windows[:_REF_WINDOWS]
+    class_acc: dict[str, list[float]] = {}
+    input_acc: dict[str, dict[str, list[float]]] = {}
+    for w in ref_windows:
+        try:
+            out = json.loads(w.output_json)
+            ins = json.loads(w.input_stats_json)
+        except ValueError:
+            continue
+        for cls, frac in (out.get("classDist") or {}).items():
+            class_acc.setdefault(str(cls), []).append(float(frac))
+        for name, stat in (ins or {}).items():
+            acc = input_acc.setdefault(name, {"mean": [], "std": []})
+            acc["mean"].append(float(stat.get("mean", 0.0)))
+            acc["std"].append(float(stat.get("std", 0.0)))
+
+    n_ref = max(1, len(ref_windows))
+    ref = {
+        "classDist": {k: sum(v) / n_ref for k, v in class_acc.items()},
+        "inputs": {
+            name: {
+                "mean": sum(acc["mean"]) / max(1, len(acc["mean"])),
+                "std": sum(acc["std"]) / max(1, len(acc["std"])),
+            }
+            for name, acc in input_acc.items()
+        },
+        "windows": len(ref_windows),
+    }
+    session.add(ResultCacheRow(
+        user_id=dep.user_id, model_id=dep.model_id, kind=kind,
+        payload=json.dumps(ref),
+    ))
+    return ref
+
+
+def _client_drift_checks(
+    session: Session, dep: DeploymentRow, now: datetime,
+) -> int:
+    """Prediction (PSI) + input-distribution drift from SDK window stats."""
+    import json
+
+    settings = get_settings()
+    windows = list(session.exec(
+        select(TelemetryWindowStatsRow)
+        .where(TelemetryWindowStatsRow.deployment_id == dep.id)
+        .order_by(TelemetryWindowStatsRow.window_start)  # type: ignore[arg-type]
+    ).all())
+    if len(windows) <= _REF_WINDOWS:
+        return 0
+    ref = _drift_reference(session, dep, windows)
+    if not ref:
+        return 0
+
+    latest = windows[-1]
+    started = _parse(latest.window_start)
+    if started is None or now - started > timedelta(minutes=_WINDOW_FRESH_MIN):
+        return 0  # client went quiet — nothing fresh to judge
+
+    raised = 0
+    try:
+        out = json.loads(latest.output_json)
+        ins = json.loads(latest.input_stats_json)
+    except ValueError:
+        return 0
+
+    current_dist = {str(k): float(v) for k, v in (out.get("classDist") or {}).items()}
+    ref_dist = ref.get("classDist") or {}
+    if current_dist and ref_dist:
+        psi = _psi(ref_dist, current_dist)
+        if psi > settings.drift_psi:
+            level = "danger" if psi > 2 * settings.drift_psi else "warning"
+            if _raise_alert(
+                session, dep, level=level, title="prediction drift",
+                body=f"output class distribution PSI {psi:.3f} vs the deployment's "
+                     f"reference window (threshold {settings.drift_psi}) — the model "
+                     f"is predicting differently than when it was deployed.",
+            ):
+                raised += 1
+
+    ref_inputs = ref.get("inputs") or {}
+    for name, stat in (ins or {}).items():
+        ref_stat = ref_inputs.get(name)
+        if not ref_stat:
+            continue
+        ref_std = max(float(ref_stat.get("std", 0.0)), 1e-6)
+        z = abs(float(stat.get("mean", 0.0)) - float(ref_stat.get("mean", 0.0))) / ref_std
+        if z > settings.drift_input_z:
+            if _raise_alert(
+                session, dep, level="warning", title="input distribution shift",
+                body=f"input '{name}' mean moved {z:.1f} sigma from the reference "
+                     f"window (threshold {settings.drift_input_z} sigma) — incoming "
+                     f"data no longer matches what the model was optimized on.",
+            ):
+                raised += 1
+            break  # one input-shift alert per pass is enough signal
+    return raised
+
+
 def drift_monitor_pass(session: Session) -> dict:
     """Run one monitoring pass over all deployments. Returns a small summary."""
     settings = get_settings()
@@ -180,7 +320,13 @@ def drift_monitor_pass(session: Session) -> dict:
         events = _events(session, dep.id, now - window, now)
         rolling_p95, err_pct = _update_live_metrics(session, dep, events, window, now)
         _upsert_rollups(session, dep, events)
-        if dep.status == "paused" or not events:
+        if dep.status == "paused":
+            continue
+        # Prediction/input drift from SDK-shipped window stats — checked even
+        # without request events in the window (a client can ship stats while
+        # the request stream is bucketed into a different window).
+        alerts_raised += _client_drift_checks(session, dep, now)
+        if not events:
             continue
         # p95 spike vs the benchmark baseline.
         base = _baseline_p95(session, dep.model_id)
