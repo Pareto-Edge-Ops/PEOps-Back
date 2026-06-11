@@ -2,7 +2,7 @@
 computes client-side (PEOps-Front/src/features/architecture/components/
 LayerGraph3D.tsx): per-perceptron world positions, effective layer widths,
 bipartite edge geometry, sensitivity/viridis colors, camera framing, and the
-hover/inspector descriptions (layerDescriptions.ts port).
+hover/inspector descriptions (real per-op metadata, see layer_descriptions.py).
 
 All math is a faithful port — constants and formulas match the component
 byte-for-byte so a backend-driven renderer is pixel-identical.
@@ -13,7 +13,7 @@ from __future__ import annotations
 import math
 
 from app.services.detrand import js_round
-from app.services.viz.layer_descriptions import get_layer_description
+from app.services.viz.layer_descriptions import describe_kind_fallback
 
 # LayerGraph3D.tsx constants
 COL_SPACING = 1.55
@@ -144,8 +144,11 @@ def build_architecture_scene(arch: dict, *, include_segments: bool = False) -> d
                 "sensitivity": COLORS["accent"] if is_sensitive else COLORS["neuronDim"],
                 "viridis": viridis_hex(sens),
             },
-            "description": get_layer_description(
-                node["id"], node["kind"], node["name"], model_type,
+            # Real-pipeline nodes carry a per-op description generated from the
+            # actual ONNX metadata; nodes without one (input/output, weights-only
+            # layers) get the honest kind-level fallback.
+            "description": node.get("description") or describe_kind_fallback(
+                node["kind"], node["name"], model_type,
             ),
         })
         cursor += w

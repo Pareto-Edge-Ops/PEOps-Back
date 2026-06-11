@@ -11,9 +11,10 @@ import math
 from collections.abc import Callable
 from typing import Protocol
 
-from app.schemas.architecture import Architecture, LayerEdge, LayerNode
+from app.schemas.architecture import Architecture, LayerDescription, LayerEdge, LayerNode
 from app.services.mappers.layout import compute_layout
 from app.services.mappers.op_kind import find_attention_ops, kind_for
+from app.services.viz.layer_descriptions import describe_op
 
 ARCH_DISPLAY = {
     "MLP": "Multi-Layer Perceptron",
@@ -42,14 +43,33 @@ class GraphLike(Protocol):  # subset of peops GraphInfo
     topo_order: list[str]
 
 
-def _width_for(op: OpLike, kind: str) -> float | None:
+def _units_for(op: OpLike, kind: str) -> int | None:
+    """REAL channel/feature count of the op's first output — the number the
+    rendered layer width stylizes (√-scale, clamped). Exposed on the node as
+    `units` so the UI can state the honest figure."""
     if not op.output_shapes or not op.output_shapes[0]:
         return None
     shape = [d for d in op.output_shapes[0] if isinstance(d, int) and d > 0]
     if not shape:
         return None
-    units = shape[1] if kind in ("conv", "bn", "pool", "upsample") and len(shape) > 1 else shape[-1]
+    return shape[1] if kind in ("conv", "bn", "pool", "upsample") and len(shape) > 1 else shape[-1]
+
+
+def _width_for(units: int | None) -> float | None:
+    if units is None:
+        return None
     return float(max(3, min(22, round(math.sqrt(units)))))
+
+
+def _concrete_shape(shapes: list | None) -> list[int] | None:
+    """First entry of input_shapes/output_shapes — None when missing or any
+    dim is dynamic/unknown (the analyzer marks those as -1/0)."""
+    if not shapes:
+        return None
+    first = shapes[0]
+    if not first or not all(isinstance(d, int) and d > 0 for d in first):
+        return None
+    return [int(d) for d in first]
 
 
 def map_architecture(
@@ -138,8 +158,25 @@ def map_architecture(
             rec = selected_precisions[name]
             if rec not in ("INT8", "FP16", "FP32"):
                 rec = "FP16"  # INT4 etc. — clamp into the frontend enum
+            precision_source = "pareto"  # the served artifact's per-op choice
         else:
             rec = recommend_for(op, sens)
+            precision_source = "recommended"
+
+        # Real per-op metadata (duck-typed: test doubles may omit the extras).
+        in_shape = _concrete_shape(getattr(op, "input_shapes", None))
+        out_shape = _concrete_shape(getattr(op, "output_shapes", None))
+        raw_category = getattr(op, "category", None)
+        category = getattr(raw_category, "value", raw_category)
+        units = _units_for(op, kind)
+        description = describe_op(
+            op.op_type,
+            attributes=getattr(op, "attributes", None) or {},
+            input_shape=in_shape,
+            output_shape=out_shape,
+            params=int(op.param_count),
+            is_attention=kind == "attn",
+        )
 
         nodes.append(LayerNode(
             id=name,
@@ -152,7 +189,15 @@ def map_architecture(
             params=op.param_count,
             latencyMs=latency,
             recommend=rec,  # type: ignore[arg-type]
-            width=_width_for(op, kind),
+            width=_width_for(units),
+            opType=op.op_type,
+            category=category if isinstance(category, str) else None,
+            inputShape=in_shape,
+            outputShape=out_shape,
+            flops=max(0, int(op.flops_estimate)),
+            units=units,
+            precisionSource=precision_source,  # type: ignore[arg-type]
+            description=LayerDescription(**description),
         ))
 
     max_depth = max((n.depth for n in nodes), default=0)
