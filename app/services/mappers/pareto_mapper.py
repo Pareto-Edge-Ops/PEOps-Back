@@ -63,6 +63,7 @@ def map_pareto(
             score=trial_score(p.accuracy, base_acc, p.size_ratio, p.speedup),
             quant=derive_quant_label(p.compression_config),
             onFrontier=p.trial_number in frontier_nums,
+            trialNumber=p.trial_number,
         ))
 
     original_size_mb = pareto.original_size / 1e6

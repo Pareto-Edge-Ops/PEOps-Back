@@ -211,5 +211,16 @@ def artifact_prefix(model_id: str) -> str:
     return f"artifacts/{model_id}/"
 
 
+def ingested_key(model_id: str) -> str:
+    """Post-ingestion ONNX — the exact graph trial configs re-apply onto.
+    Lives under artifact_prefix so model deletion cleans it up for free."""
+    return f"artifacts/{model_id}/{model_id}_ingested.onnx"
+
+
+def trial_artifact_key(model_id: str, trial_number: int) -> str:
+    """Per-Pareto-trial exported artifact (materialized on demand)."""
+    return f"artifacts/{model_id}/pareto/{model_id}_trial{trial_number:03d}.onnx"
+
+
 def source_key(token: str, file_name: str) -> str:
     return f"uploads/{token}_{Path(file_name).name}"

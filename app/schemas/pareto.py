@@ -16,6 +16,7 @@ class Trial(BaseModel):
     score: float
     quant: str
     onFrontier: bool
+    trialNumber: int = -1   # Optuna trial number — the per-trial export handle
 
 
 class ParetoBudget(BaseModel):

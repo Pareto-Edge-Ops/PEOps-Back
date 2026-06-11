@@ -8,12 +8,13 @@ the SPA turns into an explanatory empty state."""
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from sqlmodel import Session
 
 from app.auth.dependencies import CurrentUser
 from app.db import get_session
 from app.repositories import get_cached_result, owned_model
+from app.services.trial_export import export_trial, stream_trial_artifact
 from app.services.viz.pareto_scene import build_pareto_scene
 
 router = APIRouter(tags=["pareto"])
@@ -48,6 +49,42 @@ def pareto(
     session: Session = Depends(get_session),
 ) -> JSONResponse:
     return JSONResponse(get_pareto_payload(session, model_id, current_user.id))
+
+
+@router.post("/models/{model_id}/pareto/trials/{trial_number}/export")
+def trial_export(
+    model_id: str,
+    trial_number: int,
+    current_user: CurrentUser,
+    session: Session = Depends(get_session),
+) -> dict:
+    """Materialize (or reuse) the ONNX artifact for one Pareto trial.
+
+    Synchronous by design: re-applying a trial config is graph surgery on an
+    already-ingested ONNX — seconds at the <=24-compressible-op scale this
+    pipeline caps at. Idempotent: the artifact is cached in storage."""
+    owned_model(session, model_id, current_user.id)
+    return export_trial(session, model_id, current_user.id, trial_number)
+
+
+@router.get("/models/{model_id}/pareto/trials/{trial_number}/artifact")
+def trial_artifact(
+    model_id: str,
+    trial_number: int,
+    current_user: CurrentUser,
+    session: Session = Depends(get_session),
+) -> StreamingResponse:
+    owned_model(session, model_id, current_user.id)
+    stream, size, name = stream_trial_artifact(
+        session, model_id, current_user.id, trial_number)
+    return StreamingResponse(
+        stream,
+        media_type="application/octet-stream",
+        headers={
+            "Content-Disposition": f'attachment; filename="{name}"',
+            "Content-Length": str(size),
+        },
+    )
 
 
 @router.get("/models/{model_id}/pareto/scene")
