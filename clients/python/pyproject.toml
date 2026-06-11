@@ -4,11 +4,42 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "peops-sdk"
-version = "0.1.0"
-description = "Python client for calling deployed, PEOps-compressed models"
+version = "0.2.0"
+description = "Serve PEOps-compressed models anywhere - hosted or local ONNX serving with built-in telemetry that feeds the PEOps dashboard"
 readme = "README.md"
+license = { file = "LICENSE" }
 requires-python = ">=3.10"
+authors = [{ name = "PEOps" }]
+keywords = ["onnx", "model-compression", "inference", "telemetry", "mlops"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = ["httpx>=0.27"]
+
+[project.optional-dependencies]
+serve = ["onnxruntime>=1.18", "numpy>=1.26"]
+system = ["psutil>=5.9"]
+dev = ["pytest>=8.0", "numpy>=1.26", "onnx>=1.16", "onnxruntime>=1.18"]
+
+[project.urls]
+Homepage = "https://github.com/peops/peops"
+Documentation = "https://github.com/peops/peops#readme"
+Changelog = "https://github.com/peops/peops/blob/main/clients/python/CHANGELOG.md"
+
+[project.scripts]
+peops = "peops_sdk.cli:main"
 
 [tool.setuptools]
 packages = ["peops_sdk"]
+
+[tool.setuptools.package-data]
+peops_sdk = ["py.typed"]
