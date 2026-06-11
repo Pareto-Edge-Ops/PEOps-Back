@@ -32,7 +32,7 @@ from app.dbmodels import (
 )
 from app.repositories import put_cached_result
 from app.services.storage import artifact_key as make_artifact_key
-from app.services.storage import get_storage
+from app.services.storage import get_storage, ingested_key
 
 
 def _now_iso() -> str:
@@ -84,7 +84,9 @@ def execute_pipeline(
             dash = s.get(RunRow, f"run_{job.run_id}")
             if dash:
                 dash.progress_pct = pct
-                total = settings.pareto_trials
+                # Same denominator the run was created with (4 in fast mode) —
+                # never claim the full real-mode trial budget mid-run.
+                total = 4 if settings.fast_pipeline else settings.pareto_trials
                 dash.iter = f"{round(total * pct / 100)} / {total}"
                 s.add(dash)
             s.commit()
@@ -204,6 +206,8 @@ def execute_pipeline(
             storage_dir=str(work),
             should_cancel=should_cancel,
             benchmark_samples=50 if settings.fast_pipeline else 200,
+            guarantee_mode=settings.guarantee_mode,
+            tau=settings.tau,
         )
         _on_success(job, model_name, artifacts)
     except Exception as exc:  # noqa: BLE001 — job boundary
@@ -231,6 +235,12 @@ def _on_success(
         new_artifact_key = make_artifact_key(job.model_id, suffix)
         get_storage().upload_file(artifact_path, new_artifact_key)
 
+    # Persist the post-ingestion ONNX — the source graph that per-trial Pareto
+    # exports re-apply compression configs onto.
+    ingested_path = getattr(artifacts, "ingested_path", None)
+    if ingested_path and Path(ingested_path).exists():
+        get_storage().upload_file(ingested_path, ingested_key(job.model_id))
+
     with open_session() as s:
         put_cached_result(s, job.model_id, "architecture", artifacts.architecture,
                           user_id=job.user_id)
@@ -242,6 +252,13 @@ def _on_success(
             if artifacts.benchmark:
                 put_cached_result(s, job.model_id, "benchmark", artifacts.benchmark,
                                   user_id=job.user_id)
+            trial_configs = getattr(artifacts, "trial_configs", None)
+            if trial_configs:
+                put_cached_result(
+                    s, job.model_id, "pareto_configs",
+                    {"schema": 1, "trials": trial_configs},
+                    user_id=job.user_id,
+                )
 
         run = s.get(IngestionRunRow, job.run_id)
         if run:
@@ -257,7 +274,13 @@ def _on_success(
             total = dash.iter.split("/")[-1].strip()
             dash.iter = f"{total} / {total}"
             dash.best_acc = artifacts.best_accuracy or 0
-            dash.delta_acc = round(getattr(artifacts, "quality_score", 0.0), 2)
+            # Real accuracy delta: best trial vs the experiment baseline (pp).
+            # Weights-only runs have no measurable accuracy → honest 0.
+            base_acc = (artifacts.pareto or {}).get("baseAccuracy") if not weights_only else None
+            dash.delta_acc = (
+                round((artifacts.best_accuracy or 0) - base_acc, 2)
+                if base_acc is not None else 0.0
+            )
             s.add(dash)
 
         model = s.get(ModelRow, job.model_id)

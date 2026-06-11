@@ -33,6 +33,11 @@ class PipelineArtifacts:
     artifact_path: str | None   # exported compressed ONNX
     elapsed_sec: float
     max_sensitivity: float      # highest normalized UOSA sensitivity ∈ [0,1]
+    ingested_path: str | None = None        # post-ingestion ONNX (per-trial export source)
+    trial_configs: dict | None = None       # trial_number -> compression_config dict
+    guarantee_rung: str | None = None       # selected ladder rung (certified floor)
+    guarantee_ofs: float | None = None      # pooled-gate OFS of the SERVED artifact
+    guarantee_certificate: str | None = None
 
 
 Emit = Callable[[str, str], None]          # (level, message)
@@ -57,6 +62,8 @@ def run_pipeline(
     storage_dir: str,
     should_cancel: Callable[[], bool],
     benchmark_samples: int = 200,
+    guarantee_mode: bool = True,
+    tau: float = 0.95,
 ) -> PipelineArtifacts:
     import onnx  # noqa: F401 — fail fast if the engine extra is missing
     from peops.core.calibration_generator import CalibrationGenerator
@@ -64,11 +71,12 @@ def run_pipeline(
         ActionTranslator,
         get_action_space,
     )
+    from peops.core.guarantee import build_gate_probes, gate_check, guarantee_compress
     from peops.core.ingestion import ingest
     from peops.core.uosa import compute_uosa
     from peops.core.validation import CompressionValidator
     from peops.graph.model_detector import ModelDetector
-    from peops.graph.onnx_analyzer import OnnxAnalyzer
+    from peops.graph.onnx_analyzer import OnnxAnalyzer, initializer_bytes
     from peops.graph.onnx_transformer import OnnxTransformer
     from peops.sdk import _reconstruct_model
     from peops.search.pareto_search import ParetoSearch
@@ -110,6 +118,12 @@ def run_pipeline(
     sig_in = ", ".join(f"{k}{v}" for k, v in ingestion.input_spec.items())
     emit("INFO", f"Inputs: {sig_in}")
     emit("INFO", f"Outputs: {', '.join(o.name for o in model.graph.output)}")
+    # Persist the post-ingestion ONNX: per-trial Pareto export re-applies any
+    # trial's action config to exactly this graph later.
+    ingested_dir = Path(storage_dir)
+    ingested_dir.mkdir(parents=True, exist_ok=True)
+    ingested_path = ingested_dir / f"{model_id}_ingested.onnx"
+    onnx.save(model, str(ingested_path))
     emit("INFO", f"Model artifact ingested into peops-registry (run {run_id})")
     progress(12)
     check_cancel()
@@ -231,13 +245,41 @@ def run_pipeline(
         else:
             emit("DEBUG", "Surrogate skipped — not enough distinct trials")
 
-    # ── Phase 4 · Optimizer · candidate selection + export ────────────────
-    phase(4, "Optimizer · Pareto Selection & Export")
+    # ── Phase 4 · Optimizer · Guarantee Ladder & Pareto Selection ──────────
+    phase(4, "Optimizer · Guarantee Ladder & Pareto Selection")
     translator = ActionTranslator()
     transformer = OnnxTransformer()
     compressed = None
     selected_precisions: dict[str, str] = {}
+    guarantee_rung: str | None = None
+    guarantee_ofs: float | None = None
+    guarantee_certificate: str | None = None
 
+    # Certified floor: the guarantee ladder (the configuration validated in
+    # the UOSA paper experiments — pooled-probe OFS >= tau gate + original
+    # fallback). The served artifact is its candidate unless a Pareto pick
+    # passes the SAME gate and is strictly smaller.
+    gate_probes = None
+    ladder_result = None
+    if guarantee_mode and compressible:
+        emit("INFO", f"Running guarantee ladder (tau={tau}, pooled gate probes)")
+        gate_probes = build_gate_probes(
+            model, input_spec, report.architecture, n_probes=n_probes, seed=seed)
+        try:
+            ladder_result = guarantee_compress(
+                model, tau=tau, n_probes=n_probes, seed=seed,
+                graph_info=graph_info, profile=profile,
+                architecture=report.architecture, input_spec=input_spec,
+                ladder="v2", gate_probes=gate_probes,
+            )
+            emit("INFO", f"Ladder candidate: rung {ladder_result.rung} — "
+                         f"OFS={ladder_result.output_fidelity:.4f}, "
+                         f"size×{ladder_result.size_ratio:.3f}")
+        except Exception as exc:  # ladder is best-effort; Pareto path remains
+            emit("WARN", f"Guarantee ladder failed: {type(exc).__name__}: {exc}")
+    check_cancel()
+
+    chosen = None
     if pareto_result and pareto_result.pareto_points:
         candidates = sorted(pareto_result.pareto_points, key=lambda p: -p.accuracy)
         chosen = next(
@@ -245,16 +287,56 @@ def run_pipeline(
              if c.accuracy >= pareto_result.original_accuracy * 0.95),
             candidates[0],
         )
-        selected_precisions = {
-            name: cfg.get("precision", "FP32")
-            for name, cfg in chosen.compression_config.items()
-        }
-        emit("INFO", f"Selected Pareto point: trial #{chosen.trial_number} — "
+        emit("INFO", f"Best Pareto point: trial #{chosen.trial_number} — "
                      f"Q={chosen.accuracy:.4f}, size×{chosen.size_ratio:.3f}, "
                      f"speedup×{chosen.speedup:.2f}")
         compressed = _reconstruct_model(
             model, graph_info, chosen.compression_config, translator, transformer,
         )
+
+    if ladder_result is not None:
+        ladder_bytes = ladder_result.model.ByteSize()
+        pareto_ok = False
+        if compressed is not None and gate_probes is not None:
+            ofs_p, _q_p = gate_check(
+                model, compressed, gate_probes, input_spec, report.architecture, seed)
+            pareto_ok = ofs_p >= tau and compressed.ByteSize() < ladder_bytes
+            emit("INFO", f"Pareto candidate gate check: OFS={ofs_p:.4f} "
+                         f"(tau={tau}) · {compressed.ByteSize() / 1e6:.3f} MB "
+                         f"vs ladder {ladder_bytes / 1e6:.3f} MB")
+            if pareto_ok:
+                guarantee_rung = "PARETO_CERTIFIED"
+                guarantee_ofs = ofs_p
+                emit("INFO", "Serving Pareto candidate — passes the guarantee gate "
+                             "and beats the ladder on size")
+        if not pareto_ok:
+            compressed = ladder_result.model
+            chosen = None
+            guarantee_rung = ladder_result.rung
+            guarantee_ofs = ladder_result.output_fidelity
+            emit("INFO", f"Serving ladder candidate (rung {ladder_result.rung}) — "
+                         "certified fidelity floor")
+        guarantee_certificate = ladder_result.certificate()
+        for line in guarantee_certificate.splitlines():
+            emit("INFO", line)
+
+    if chosen is not None:
+        selected_precisions = {
+            name: cfg.get("precision", "FP32")
+            for name, cfg in chosen.compression_config.items()
+        }
+    elif guarantee_rung and guarantee_rung not in ("ORIGINAL",):
+        rung_precision = {
+            "INT8_uniform": "INT8", "INT8_uosa_mixed": "INT8",
+            "W8_weight_only": "INT8", "FP16": "FP16",
+        }.get(guarantee_rung, "FP32")
+        protected_set = profile.get_protection_set(top_p=0.3) if profile.results else set()
+        for op in compressible:
+            if guarantee_rung == "INT8_uosa_mixed" and op.name in protected_set:
+                selected_precisions[op.name] = "FP32"
+            else:
+                selected_precisions[op.name] = rung_precision
+
     if compressed is None:
         emit("INFO", "Fallback: single UOSA-guided compression pass")
         from peops.core.compression_actions import CompressionConfig
@@ -283,6 +365,8 @@ def run_pipeline(
     onnx.save(compressed, str(artifact_path))
     emit("INFO", f"Compiled artifact · {artifact_path.name} "
                  f"({compressed.ByteSize() / 1e6:.3f} MB, was {model.ByteSize() / 1e6:.3f} MB)")
+    emit("INFO", f"Weights-only: {initializer_bytes(compressed) / 1e6:.3f} MB "
+                 f"(was {initializer_bytes(model) / 1e6:.3f} MB)")
     progress(88)
     check_cancel()
 
@@ -354,6 +438,12 @@ def run_pipeline(
     emit("INFO", "Sensitivity analysis ready")
     progress(100)
 
+    trial_configs = None
+    if pareto_result is not None and pareto_result.all_trials:
+        trial_configs = {
+            str(p.trial_number): p.compression_config for p in pareto_result.all_trials
+        }
+
     return PipelineArtifacts(
         architecture=architecture.to_response(),
         pareto=experiment.model_dump(),
@@ -364,6 +454,11 @@ def run_pipeline(
         artifact_path=str(artifact_path),
         elapsed_sec=elapsed,
         max_sensitivity=max(normalized.values(), default=0.0),
+        ingested_path=str(ingested_path),
+        trial_configs=trial_configs,
+        guarantee_rung=guarantee_rung,
+        guarantee_ofs=guarantee_ofs,
+        guarantee_certificate=guarantee_certificate,
     )
 
 

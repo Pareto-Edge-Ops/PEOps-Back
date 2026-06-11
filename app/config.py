@@ -85,9 +85,16 @@ class Settings(BaseSettings):
     # Demo affordance: when on, the dashboard "Generate traffic" button + the
     # /telemetry/simulate endpoint are enabled (off in production by default).
     telemetry_sim_enabled: bool = False
-    # Run the drift monitor from inside the API process (single-box / demo). In
-    # scaled deploys the arq worker's cron runs it instead, so this stays off.
-    monitor_inline_enabled: bool = False
+    # Run the drift monitor from inside the API process. Defaults ON so the
+    # closed loop works out of the box on a single box (inline_jobs deploys
+    # have no arq cron); scaled deploys with a worker may turn this off and
+    # rely on the worker's cron instead.
+    monitor_inline_enabled: bool = True
+    # Client-telemetry (SDK) ingestion + drift thresholds on SDK-shipped stats.
+    rate_limit_telemetry: str = "600/minute"
+    telemetry_batch_max: int = 500         # max items per /telemetry batch POST
+    drift_psi: float = 0.2                 # prediction-drift PSI warning level
+    drift_input_z: float = 3.0             # input-mean shift alert (z-score)
 
     # --- observability ---
     log_level: str = "INFO"
@@ -109,6 +116,15 @@ class Settings(BaseSettings):
     max_compressible_ops: int = 24        # UOSA builds one ORT session per op — cap it
     job_timeout_sec: int = 900
     job_workers: int = 2
+    # Guarantee-by-construction backbone: the served artifact must pass the
+    # pooled-probe OFS >= tau gate (the configuration validated in the paper
+    # experiments). A Pareto candidate is served only when it passes the same
+    # gate AND is smaller than the ladder's certified candidate.
+    guarantee_mode: bool = True           # PEOPS_GUARANTEE_MODE=0 to disable
+    tau: float = 0.95                     # fidelity floor for the gate
+    # Per-trial Pareto export: refuse to materialize artifacts for source
+    # models larger than this (transform memory is ~2x model size).
+    trial_export_max_mb: int = 500
 
     # --- dashboard ---
     compute_quota_h: float = 500.0        # workspace compute budget (hours)
