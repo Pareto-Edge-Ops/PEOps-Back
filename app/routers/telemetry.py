@@ -118,9 +118,24 @@ def meta(
     current_user: CurrentUser,
     session: Session = Depends(get_session),
 ) -> dict:
-    """Lets the SPA label KPIs (live vs benchmark) and show a liveness dot."""
-    _model(session, model_id, current_user.id)
+    """Lets the SPA label KPIs (live vs benchmark) and show a liveness dot.
+
+    `available`/`reason` are the SPA's single gate for whether kpi/series/
+    percentiles will return data: those endpoints serve live events when any
+    exist, else fall back to the benchmark, else raise the structured 404. The
+    SPA reads this here and simply does not fire (or retry) the doomed requests —
+    so a weights-only / not-yet-benchmarked model shows its terminal state
+    instead of looping 404s.
+    """
+    model_obj = _model(session, model_id, current_user.id)
     live = telemetry_agg.has_any_events(session, model_id)
+    bench = get_cached_result(
+        session, model_id, "benchmark", user_id=model_obj.user_id
+    )
+    available = live or bool(bench)
+    reason = None if available else (
+        "weights_only_checkpoint" if model_obj.weights_only else "no_benchmark"
+    )
     deps = session.exec(
         select(DeploymentRow).where(DeploymentRow.model_id == model_id)
     ).all()
@@ -134,6 +149,11 @@ def meta(
     ).first()
     return {
         "source": "live" if live else "benchmark",
+        # Whether the data endpoints (kpi/series/percentiles) have anything to
+        # return; `reason` mirrors the structured 404 code they would otherwise
+        # raise (weights_only_checkpoint | no_benchmark) or null when available.
+        "available": available,
+        "reason": reason,
         "deployments": len(deps),
         "liveDeployments": sum(1 for d in deps if d.status != "paused"),
         # Honest labeling of where live data comes from: hosted /v1/infer

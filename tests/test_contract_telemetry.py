@@ -90,3 +90,23 @@ def test_failed_model_telemetry_no_benchmark(client, failed_model):
 
 def test_telemetry_404_missing_model(client):
     assert client.get("/api/models/m_missing/telemetry/kpi").status_code == 404
+
+
+def test_meta_availability_gate(client, real_model, statedict_model, failed_model):
+    """meta.available/reason are the SPA's single gate and must mirror exactly
+    what kpi/series/percentiles would do — data for a benchmarked model, the
+    weights_only_checkpoint / no_benchmark 404 codes otherwise. This is what lets
+    the SPA skip the doomed requests instead of looping 404s."""
+    ok = client.get(f"/api/models/{real_model['modelId']}/telemetry/meta").json()
+    assert ok["available"] is True
+    assert ok["reason"] is None
+
+    wo = client.get(
+        f"/api/models/{statedict_model['modelId']}/telemetry/meta"
+    ).json()
+    assert wo["available"] is False
+    assert wo["reason"] == "weights_only_checkpoint"
+
+    nb = client.get(f"/api/models/{failed_model['modelId']}/telemetry/meta").json()
+    assert nb["available"] is False
+    assert nb["reason"] == "no_benchmark"
