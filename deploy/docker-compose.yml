@@ -72,7 +72,11 @@ services:
     build:
       context: ..
       dockerfile: Dockerfile
-    command: ["sh", "-c", "python -m alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+    # --proxy-headers + --forwarded-allow-ips so uvicorn honors X-Forwarded-*
+    # from the frontend's Caddy / Cloudflare Tunnel — the real client IP reaches
+    # the rate limiter and access logs instead of the proxy's address. Safe here
+    # because the API is bound to a private network, not the public internet.
+    command: ["sh", "-c", "python -m alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'"]
     # Publish the API so the separately-deployed frontend (its Caddy) and any
     # direct SDK clients can reach it. PEOPS_API_BIND defaults to 127.0.0.1 so a
     # single-box dev run isn't exposed; set it to 0.0.0.0 (or a specific host IP)
@@ -95,6 +99,9 @@ services:
       PEOPS_PUBLIC_ORIGIN: ${PEOPS_PUBLIC_ORIGIN:-http://localhost:8080}
       PEOPS_CORS_ORIGINS: ${PEOPS_PUBLIC_ORIGIN:-http://localhost:8080}
       PEOPS_COOKIE_SECURE: ${PEOPS_COOKIE_SECURE:-0}
+      PEOPS_COOKIE_SAMESITE: ${PEOPS_COOKIE_SAMESITE:-lax}
+      # Synthetic dashboard traffic — off in production; flip to 1 only to demo.
+      PEOPS_TELEMETRY_SIM_ENABLED: ${PEOPS_TELEMETRY_SIM_ENABLED:-0}
       PEOPS_GOOGLE_CLIENT_ID: ${PEOPS_GOOGLE_CLIENT_ID:-}
       PEOPS_GOOGLE_CLIENT_SECRET: ${PEOPS_GOOGLE_CLIENT_SECRET:-}
       PEOPS_GOOGLE_REDIRECT_URI: ${PEOPS_GOOGLE_REDIRECT_URI:-http://localhost:8080/api/auth/google/callback}
