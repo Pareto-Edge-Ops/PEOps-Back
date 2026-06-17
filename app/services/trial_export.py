@@ -86,7 +86,6 @@ def _materialize(
     import tempfile
 
     import onnx
-
     from peops.core.compression_actions import ActionTranslator
     from peops.graph.onnx_analyzer import OnnxAnalyzer
     from peops.graph.onnx_transformer import OnnxTransformer

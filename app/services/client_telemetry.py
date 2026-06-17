@@ -13,7 +13,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlmodel import Session
 
-from app.config import get_settings, iso
+from app.config import get_settings
 from app.dbmodels import (
     DeploymentRow,
     InferenceEventRow,

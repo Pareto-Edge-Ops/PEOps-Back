@@ -330,7 +330,7 @@ def output_stats(
             if not hist_acc:
                 hist_acc = [0.0] * len(hist)
             if len(hist) == len(hist_acc):
-                hist_acc = [a + float(h) for a, h in zip(hist_acc, hist)]
+                hist_acc = [a + float(h) for a, h in zip(hist_acc, hist, strict=False)]
         if out.get("top1ConfMean") is not None:
             conf_num += float(out["top1ConfMean"]) * n
         if out.get("entropyMean") is not None:

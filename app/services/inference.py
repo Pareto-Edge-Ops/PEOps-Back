@@ -61,7 +61,7 @@ def is_executable(artifact_key: str | None) -> bool:
 
 # ── bounded session cache ────────────────────────────────────────────────────
 
-_session_cache: "OrderedDict[str, Any]" = OrderedDict()
+_session_cache: OrderedDict[str, Any] = OrderedDict()
 _cache_lock = threading.Lock()
 
 
@@ -169,7 +169,7 @@ def _summarize_outputs(session, outs: list) -> list[dict]:
 
     names = [o.name for o in session.get_outputs()]
     summary: list[dict] = []
-    for name, arr in zip(names, outs):
+    for name, arr in zip(names, outs, strict=False):
         arr = np.asarray(arr)
         item: dict = {"name": name, "shape": list(arr.shape), "dtype": str(arr.dtype)}
         if arr.size <= 256:
