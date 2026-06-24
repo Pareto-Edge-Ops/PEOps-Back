@@ -345,6 +345,12 @@ def model_artifact_info(
             ]
         except Exception:  # noqa: BLE001 — IO spec is best-effort metadata
             pass
+    # Provenance lets the SDK Hub label exactly which candidate this artifact is
+    # (Pareto pick / guarantee-ladder rung) so its size reconciles with the
+    # Pareto Studio. Absent for models optimized before this was recorded.
+    meta = get_cached_result(session, model_id, "artifact_meta", user_id=current_user.id)
+    if meta:
+        info["provenance"] = meta
     return info
 
 

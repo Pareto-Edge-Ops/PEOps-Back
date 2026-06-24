@@ -259,6 +259,14 @@ def _on_success(
                     {"schema": 1, "trials": trial_configs},
                     user_id=job.user_id,
                 )
+            # Provenance of the served artifact — the SDK Hub labels which
+            # candidate `artifact_key` actually holds (Pareto pick / ladder rung).
+            artifact_meta = getattr(artifacts, "artifact_meta", None)
+            if artifact_meta:
+                put_cached_result(
+                    s, job.model_id, "artifact_meta", artifact_meta,
+                    user_id=job.user_id,
+                )
 
         run = s.get(IngestionRunRow, job.run_id)
         if run:

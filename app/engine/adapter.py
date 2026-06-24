@@ -38,6 +38,7 @@ class PipelineArtifacts:
     guarantee_rung: str | None = None       # selected ladder rung (certified floor)
     guarantee_ofs: float | None = None      # pooled-gate OFS of the SERVED artifact
     guarantee_certificate: str | None = None
+    artifact_meta: dict | None = None        # served-artifact provenance (source/trial/rung)
 
 
 Emit = Callable[[str, str], None]          # (level, message)
@@ -352,6 +353,29 @@ def run_pipeline(
                 actions.extend(translator.translate(op, cfg))
         compressed = transformer.apply(model, actions) if actions else model
 
+    # Provenance of the SERVED artifact: which candidate `model.artifact_key`
+    # actually holds, so the SDK Hub can label it exactly (and the Pareto Studio
+    # can mark that trial). `chosen` is a Pareto point only when the certified
+    # Pareto pick won; a ladder/fallback candidate is NOT in the trial list.
+    if chosen is not None:
+        artifact_meta: dict = {
+            "source": "pareto",
+            "trialNumber": chosen.trial_number,
+            "rung": guarantee_rung,  # "PARETO_CERTIFIED" when it cleared the gate
+            "accuracy": round(chosen.accuracy * 100, 2),
+            "sizeRatio": round(chosen.size_ratio, 4),
+            "sizeBytes": int(compressed.ByteSize()),
+        }
+    elif guarantee_rung:
+        artifact_meta = {
+            "source": "ladder",
+            "rung": guarantee_rung,
+            "ofs": round(guarantee_ofs, 4) if guarantee_ofs is not None else None,
+            "sizeBytes": int(compressed.ByteSize()),
+        }
+    else:
+        artifact_meta = {"source": "fallback", "sizeBytes": int(compressed.ByteSize())}
+
     validation = CompressionValidator(n_probes=n_probes, seed=seed).validate(
         model, compressed, input_spec, report.architecture,
     )
@@ -422,6 +446,7 @@ def run_pipeline(
     if pareto_result is not None and pareto_result.all_trials:
         experiment = map_pareto(
             model_id, model_name, f"exp_{run_id}", pareto_result, status="completed",
+            served_trial_number=chosen.trial_number if chosen is not None else None,
         )
     else:
         experiment = baseline_experiment(
@@ -459,6 +484,7 @@ def run_pipeline(
         guarantee_rung=guarantee_rung,
         guarantee_ofs=guarantee_ofs,
         guarantee_certificate=guarantee_certificate,
+        artifact_meta=artifact_meta,
     )
 
 

@@ -9,6 +9,9 @@ The SDK Hub now centers on the REAL compressed artifact
 from __future__ import annotations
 
 import json
+import re
+from functools import lru_cache
+from pathlib import Path
 
 from fastapi import APIRouter, Depends
 from sqlmodel import Session, select
@@ -18,6 +21,37 @@ from app.dbmodels import RecipeRow, SdkSnippetRow
 from app.schemas.sdk import Recipe, SdkSnippet
 
 router = APIRouter(prefix="/sdk", tags=["sdk"])
+
+
+@lru_cache(maxsize=1)
+def _sdk_version() -> str:
+    """Real peops-sdk client version. Source of truth, in order: the installed
+    `peops_sdk` package, then the vendored client's pyproject, then a constant.
+    Keeps the SDK Hub version chip honest instead of a hardcoded string."""
+    try:
+        import peops_sdk  # type: ignore[import-not-found]
+
+        version = getattr(peops_sdk, "__version__", None)
+        if version:
+            return str(version)
+    except Exception:  # noqa: BLE001 — package may not be on the backend path
+        pass
+    try:
+        pyproject = (
+            Path(__file__).resolve().parents[2] / "clients" / "python" / "pyproject.toml"
+        )
+        match = re.search(r'(?m)^\s*version\s*=\s*"([^"]+)"', pyproject.read_text())
+        if match:
+            return match.group(1)
+    except Exception:  # noqa: BLE001 — repo layout differs in some deployments
+        pass
+    return "0.2.0"
+
+
+@router.get("/version")
+def sdk_version() -> dict[str, str]:
+    """Single source for the SDK Hub version chip — the real client version."""
+    return {"version": _sdk_version()}
 
 
 @router.get("/snippets")

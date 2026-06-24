@@ -47,6 +47,7 @@ def map_pareto(
     pareto,  # peops ParetoResult (duck-typed)
     *,
     status: str = "completed",
+    served_trial_number: int | None = None,
 ) -> ParetoExperiment:
     base_acc = pareto.original_accuracy or 1e-9
     frontier_nums = {p.trial_number for p in pareto.pareto_points}
@@ -81,6 +82,7 @@ def map_pareto(
         ),
         baseAccuracy=round(base_acc * 100, 2),
         trials=trials,
+        servedTrialNumber=served_trial_number,
     )
 
 
@@ -107,6 +109,7 @@ def baseline_experiment(
             id="t_0", name=f"{model_name.lower().replace(' ', '-')[:24]} · #001",
             accuracy=round(quality * 100, 2), latency=round(latency_ms, 3),
             size=round(size_mb, 3), score=50.0, quant="FP32 (baseline)",
-            onFrontier=True,
+            onFrontier=True, trialNumber=0,
         )],
+        servedTrialNumber=0,
     )

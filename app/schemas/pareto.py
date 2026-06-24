@@ -35,3 +35,6 @@ class ParetoExperiment(BaseModel):
     budget: ParetoBudget
     baseAccuracy: float
     trials: list[Trial]
+    # Optuna trial number whose artifact is the DEFAULT SDK Hub download, or
+    # null when the served artifact is a ladder/fallback candidate (not a trial).
+    servedTrialNumber: int | None = None
