@@ -103,12 +103,9 @@ def empty_state(client: TestClient) -> dict:
         "models": client.get("/api/models").json(),
         "summary": client.get("/api/dashboard/summary").json(),
         "runs": client.get("/api/dashboard/runs").json(),
-        "snapshot_resp": {
-            "status": client.get("/api/dashboard/pareto-snapshot").status_code,
-            "body": client.get("/api/dashboard/pareto-snapshot").json(),
-        },
+        "compression_map": client.get("/api/dashboard/compression-map").json(),
         "top_models": client.get("/api/dashboard/top-models").json(),
-        "compute_cost": client.get("/api/dashboard/compute-cost").json(),
+        "guarantee_coverage": client.get("/api/dashboard/guarantee-coverage").json(),
         "activity": client.get("/api/dashboard/activity?limit=50").json(),
     }
 

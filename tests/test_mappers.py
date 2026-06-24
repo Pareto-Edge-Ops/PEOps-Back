@@ -159,6 +159,19 @@ def test_baseline_experiment():
     assert len(exp.trials) == 1
     assert exp.trials[0].quant == "FP32 (baseline)"
     assert exp.trials[0].onFrontier is True
+    # The single baseline trial IS the served artifact.
+    assert exp.trials[0].trialNumber == 0
+    assert exp.servedTrialNumber == 0
+
+
+def test_map_pareto_served_trial_number():
+    good = FakePoint(0, 0.99, 1_000_000, 2.0,
+                     {"op": {"precision": "INT8"}}, 0.99, 0.5, 2.0)
+    res = FakeResult(pareto_points=[good], all_trials=[good])
+    # Served trial is surfaced so the Studio can badge the default download…
+    assert map_pareto("m_x", "Demo", "exp_1", res, served_trial_number=0).servedTrialNumber == 0
+    # …and is null when the served artifact is a ladder/fallback (not a trial).
+    assert map_pareto("m_x", "Demo", "exp_1", res).servedTrialNumber is None
 
 
 # ── surrogate ───────────────────────────────────────────────────────────────

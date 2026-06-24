@@ -20,20 +20,24 @@ def test_empty_db_is_honestly_empty(empty_state):
     assert s["activeRuns"]["value"] == 0
     assert s["completedThisWeek"]["value"] == 0
     assert s["liveDeployments"]["value"] == 0
-    assert s["computeUsed"]["used"] == 0
+    # nothing optimized yet → zero savings, honestly
+    assert s["sizeReduced"]["bytesSaved"] == 0
+    assert s["sizeReduced"]["modelCount"] == 0
+    assert all(p["value"] == 0 for p in s["sizeReduced"]["spark"])
     # sparks are real daily counts — all zero on an empty DB
     assert all(p["value"] == 0 for p in s["activeRuns"]["spark"])
 
-    snap = empty_state["snapshot_resp"]
-    assert snap["status"] == 404
-    assert snap["body"]["detail"]["code"] == "no_completed_runs"
+    cmap = empty_state["compression_map"]
+    assert cmap["points"] == []
+    assert cmap["modelCount"] == 0
+    assert cmap["certifiedCount"] == 0
+    assert "best" not in cmap   # excluded when absent
 
-    cost = empty_state["compute_cost"]
-    assert cost["usedGpuHours"] == 0
-    assert cost["segments"] == []
-    # No fabricated billing — keys must be absent entirely.
-    for fake in ("costUsd", "region", "resetDateText", "noteText"):
-        assert fake not in cost
+    cov = empty_state["guarantee_coverage"]
+    assert cov["totalModels"] == 0
+    assert cov["certifiedCount"] == 0
+    assert cov["segments"] == []
+    assert "avgFidelity" not in cov   # excluded when no fidelity recorded
 
 
 # ── populated state (after the real fast-pipeline fixture ran) ──────────────
@@ -49,10 +53,10 @@ def test_summary_shape_and_real_counts(client, real_model):
     assert data["completedThisWeek"]["value"] >= 1   # the real fixture run
     # the run completed today — today's spark bucket counts it
     assert data["completedThisWeek"]["spark"][-1]["value"] >= 1
-    cu = data["computeUsed"]
-    assert {"used", "quota", "label", "progressNote"} == set(cu)
-    assert "compute·h" in cu["label"]                # no GPU·h fiction
-    assert cu["used"] > 0                            # real measured duration
+    sr = data["sizeReduced"]
+    assert {"bytesSaved", "avgReductionX", "modelCount", "deltaText", "spark"} == set(sr)
+    assert len(sr["spark"]) == 16
+    assert sr["bytesSaved"] >= 0 and sr["modelCount"] >= 0
 
 
 def test_runs_reflect_real_pipeline(client, real_model):
@@ -67,16 +71,20 @@ def test_runs_reflect_real_pipeline(client, real_model):
     assert all(r["status"] == "done" for r in done)
 
 
-def test_pareto_snapshot_uses_latest_real_model(client, real_model):
-    snap = client.get("/api/dashboard/pareto-snapshot").json()
-    assert snap["modelId"] == real_model["modelId"]
-    assert "pareto" in snap["modelName"]
-    assert snap["points"]
-    assert any(p["onFrontier"] for p in snap["points"])
-    for p in snap["points"]:
-        assert set(p) == {"id", "accuracy", "latency", "size", "onFrontier"}
-    # real best accuracy of the snapshot model is exposed (optional field)
-    assert "bestAccuracy" in snap and snap["bestAccuracy"] > 0
+def test_compression_map_real_model(client, real_model):
+    cmap = client.get("/api/dashboard/compression-map").json()
+    # the real pipeline produced one optimized model with recorded provenance
+    assert cmap["modelCount"] >= 1
+    assert 0 <= cmap["certifiedCount"] <= cmap["modelCount"]
+    for p in cmap["points"]:
+        assert {"modelId", "name", "reductionX", "sizeRatio", "accuracyRetained",
+                "accuracyDrop", "withinTolerance", "certified"} <= set(p)
+        assert p["reductionX"] > 0
+        assert 0 <= p["accuracyRetained"] <= 100
+        assert isinstance(p["certified"], bool)
+    if cmap["points"]:
+        # a Pareto pick is plottable → a best (most reduction within tolerance) exists
+        assert cmap["best"]["reductionX"] > 0
 
 
 def test_top_models_real_coverage_and_spark(client, real_model):
@@ -94,17 +102,15 @@ def test_top_models_real_coverage_and_spark(client, real_model):
     assert mine["spark"] == [round(float(t["accuracy"]), 2) for t in trials[:16]]
 
 
-def test_compute_cost_real_phases(client, real_model):
-    cost = client.get("/api/dashboard/compute-cost").json()
-    assert cost["usedGpuHours"] > 0
-    assert cost["segments"], "expected real per-phase timings"
-    labels = {seg["label"] for seg in cost["segments"]}
-    assert "Benchmark" in labels
-    for seg in cost["segments"]:
+def test_guarantee_coverage_real_model(client, real_model):
+    cov = client.get("/api/dashboard/guarantee-coverage").json()
+    assert cov["totalModels"] >= 1
+    assert 0 <= cov["certifiedCount"] <= cov["totalModels"]
+    # rung buckets partition the optimized models exactly
+    assert sum(seg["value"] for seg in cov["segments"]) == cov["totalModels"]
+    for seg in cov["segments"]:
         assert seg["color"].startswith("#")
-        assert seg["value"] >= 0
-    for fake in ("costUsd", "region", "resetDateText", "noteText"):
-        assert fake not in cost
+        assert seg["value"] >= 1
 
 
 def test_activity_real_events_only(client, real_model):
