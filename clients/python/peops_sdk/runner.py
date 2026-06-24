@@ -70,6 +70,15 @@ class LocalRunner:
         self._output_names = [o.name for o in self._session.get_outputs()]
         self.model_path = model_path
 
+    @property
+    def active_provider(self) -> str:
+        """The execution provider ORT actually bound (first in get_providers)."""
+        try:
+            providers = self._session.get_providers()
+            return providers[0] if providers else ""
+        except Exception:  # noqa: BLE001
+            return ""
+
     # ── construction ─────────────────────────────────────────────────────────
 
     @classmethod
@@ -92,11 +101,15 @@ class LocalRunner:
         )
         from . import __version__
 
-        reporter = TelemetryReporter(
+        # Build the session first so the reporter can record the provider ORT
+        # actually selected — not just the first one available on the box.
+        runner = cls(str(path), providers=providers)
+        runner._reporter = TelemetryReporter(
             base_url, deployment_id, api_key,
             sdk_version=__version__, enabled=report_telemetry,
+            active_provider=runner.active_provider,
         )
-        return cls(str(path), reporter=reporter, providers=providers)
+        return runner
 
     # ── serving ──────────────────────────────────────────────────────────────
 

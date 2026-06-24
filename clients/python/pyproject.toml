@@ -28,6 +28,7 @@ dependencies = ["httpx>=0.27"]
 [project.optional-dependencies]
 serve = ["onnxruntime>=1.18", "numpy>=1.26"]
 system = ["psutil>=5.9"]
+gpu = ["nvidia-ml-py>=12"]
 dev = ["pytest>=8.0", "numpy>=1.26", "onnx>=1.16", "onnxruntime>=1.18"]
 
 [project.urls]

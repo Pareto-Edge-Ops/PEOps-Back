@@ -61,6 +61,7 @@ class TelemetryReporter:
         *,
         sdk_version: str,
         enabled: bool = True,
+        active_provider: str | None = None,
     ) -> None:
         self.enabled = telemetry_enabled(enabled)
         self.client_id = f"sdk_{uuid.uuid4().hex[:10]}"
@@ -74,7 +75,9 @@ class TelemetryReporter:
         self._window_lock = threading.Lock()
         self._aggregator = WindowAggregator()
         self._window_requests = 0
-        self._fingerprint = runtime_fingerprint(sdk_version)
+        # Captures the ORT provider the serving session actually selected (vs the
+        # first *available* one) so the dashboard attributes latency to real hw.
+        self._fingerprint = runtime_fingerprint(sdk_version, active_provider)
         self._closed = threading.Event()
         self._thread: threading.Thread | None = None
         self._http: HttpSession | None = None
