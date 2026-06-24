@@ -126,9 +126,6 @@ class Settings(BaseSettings):
     # models larger than this (transform memory is ~2x model size).
     trial_export_max_mb: int = 500
 
-    # --- dashboard ---
-    compute_quota_h: float = 500.0        # workspace compute budget (hours)
-
     # ── derived helpers ──────────────────────────────────────────────────────
 
     @property

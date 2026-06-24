@@ -13,18 +13,23 @@ class KpiBlock(BaseModel):
     spark: list[Spark]
 
 
-class ComputeUsed(BaseModel):
-    used: float
-    quota: float
-    label: str
-    progressNote: str
+class SizeReduced(BaseModel):
+    """Headline value of PEOps: how much smaller the portfolio's optimized
+    artifacts are than their originals. Replaces the borrowed "compute used"
+    quota metric (PEOps sells compression, not GPU spend)."""
+
+    bytesSaved: float          # Σ (baseline − compressed) over models with a ratio
+    avgReductionX: float       # mean × smaller (1 / sizeRatio)
+    modelCount: int            # models contributing a real savings figure
+    deltaText: str             # window-over-window, same grammar as other KPIs
+    spark: list[Spark]         # cumulative bytes saved over the trailing window
 
 
 class KpiSummary(BaseModel):
     activeRuns: KpiBlock
     completedThisWeek: KpiBlock
     liveDeployments: KpiBlock
-    computeUsed: ComputeUsed
+    sizeReduced: SizeReduced
     # Which window deltas/counts were computed over ("7d", "30d", ...) — the SPA
     # renders this instead of hardcoding "this week"/"last 30 days".
     periodLabel: str = "7d"
@@ -41,21 +46,33 @@ class DashboardRun(BaseModel):
     deltaAcc: float
 
 
-class ParetoSnapshotPoint(BaseModel):
-    id: str
-    accuracy: float
-    latency: float
-    size: float
-    onFrontier: bool
+class CompressionPoint(BaseModel):
+    """One model's served/best pick on the portfolio compression map —
+    size reduction (×) against accuracy retained (%)."""
 
-
-class ParetoSnapshot(BaseModel):
     modelId: str
-    modelName: str
-    subtitle: str
-    points: list[ParetoSnapshotPoint]
-    # Real best trial accuracy of the snapshot model; absent when unknown.
-    bestAccuracy: float | None = None
+    name: str
+    reductionX: float          # × smaller = 1 / sizeRatio
+    sizeRatio: float           # compressed / baseline
+    accuracyRetained: float    # measured accuracy of the served artifact (%)
+    accuracyDrop: float        # baseAccuracy − accuracyRetained (pts)
+    withinTolerance: bool      # accuracyDrop ≤ the model's own budget
+    certified: bool            # cleared a guarantee gate (source ≠ fallback)
+    rung: str | None = None    # guarantee rung code (PARETO_CERTIFIED, FP16, …)
+    latencyMs: float | None = None
+
+
+class CompressionBest(BaseModel):
+    modelId: str
+    reductionX: float
+    accuracyRetained: float
+
+
+class CompressionMap(BaseModel):
+    points: list[CompressionPoint]
+    modelCount: int            # optimized models considered (any provenance)
+    certifiedCount: int        # of those, models that cleared a guarantee gate
+    best: CompressionBest | None = None   # most reduction within tolerance
 
 
 class TopModel(BaseModel):
@@ -67,23 +84,20 @@ class TopModel(BaseModel):
     spark: list[float]
 
 
-class CostSegment(BaseModel):
-    label: str
-    value: float
+class GuaranteeSegment(BaseModel):
+    label: str                 # raw rung code; the SPA localizes it for display
+    value: float               # model count in this rung
     color: str
 
 
-class ComputeCost(BaseModel):
-    usedGpuHours: float
-    quotaGpuHours: float
-    # Window the hours were measured over — real label, not hardcoded UI text.
-    periodLabel: str = "this month"
-    # No real cloud billing exists for local compute — absent, never invented.
-    costUsd: float | None = None
-    region: str | None = None
-    resetDateText: str | None = None
-    noteText: str | None = None
-    segments: list[CostSegment]
+class GuaranteeCoverage(BaseModel):
+    """PEOps's unique promise made legible: how many optimized models carry a
+    fidelity guarantee, and where on the ladder they landed."""
+
+    certifiedCount: int        # models that cleared a guarantee gate
+    totalModels: int           # optimized models with recorded provenance
+    avgFidelity: float | None = None   # mean output-fidelity (ladder OFS), if any
+    segments: list[GuaranteeSegment]   # rung distribution (SplitBar)
 
 
 class ActivityEvent(BaseModel):

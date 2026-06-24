@@ -9,11 +9,12 @@ from app.schemas.architecture import Architecture, LayerEdge, LayerNode
 from app.schemas.common import OkResponse
 from app.schemas.dashboard import (
     ActivityEvent,
-    ComputeCost,
+    CompressionMap,
+    CompressionPoint,
     DashboardRun,
+    GuaranteeCoverage,
     KpiSummary,
-    ParetoSnapshot,
-    ParetoSnapshotPoint,
+    SizeReduced,
     TopModel,
 )
 from app.schemas.models import (
@@ -36,8 +37,8 @@ from app.schemas.telemetry import (
 __all__ = [
     "Architecture", "LayerEdge", "LayerNode",
     "OkResponse",
-    "ActivityEvent", "ComputeCost", "DashboardRun", "KpiSummary",
-    "ParetoSnapshot", "ParetoSnapshotPoint", "TopModel",
+    "ActivityEvent", "CompressionMap", "CompressionPoint", "DashboardRun",
+    "GuaranteeCoverage", "KpiSummary", "SizeReduced", "TopModel",
     "ImportRequest", "ImportResponse", "IngestionLog", "IngestionRun", "ModelListItem",
     "ParetoBudget", "ParetoExperiment", "Trial",
     "Recipe", "SdkSnippet",

@@ -8,19 +8,16 @@ generated; an empty workspace honestly reports zeros / structured 404s.
 
 from __future__ import annotations
 
-import math
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlmodel import Session, select
 
 from app.auth.dependencies import CurrentUser
-from app.config import get_settings
 from app.db import get_session
 from app.dbmodels import (
     ActivityRow,
     DeploymentRow,
-    IngestionRunRow,
     ModelRow,
     ResultCacheRow,
     RunRow,
@@ -29,20 +26,33 @@ from app.repositories import get_cached_result
 from app.schemas.common import Spark
 from app.schemas.dashboard import (
     ActivityEvent,
-    ComputeCost,
-    ComputeUsed,
-    CostSegment,
+    CompressionBest,
+    CompressionMap,
+    CompressionPoint,
     DashboardRun,
+    GuaranteeCoverage,
+    GuaranteeSegment,
     KpiBlock,
     KpiSummary,
-    ParetoSnapshot,
-    ParetoSnapshotPoint,
+    SizeReduced,
     TopModel,
 )
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 _SEGMENT_COLORS = ["#ADB4F3", "#6976EB", "#483EB7", "#5E69D1", "#D7DAF3", "#40BF6B"]
+
+# Guarantee-rung → fixed colour. Certified rungs ride the lavender accent ramp;
+# the uncertified fallback stays muted grey so the donut reads "covered vs not".
+_RUNG_COLORS = {
+    "PARETO_CERTIFIED": "#ADB4F3",
+    "INT8_uosa_mixed": "#6976EB",
+    "INT8_uniform": "#6976EB",
+    "W8_weight_only": "#5E69D1",
+    "FP16": "#483EB7",
+    "fallback": "#939496",
+    "ORIGINAL": "#939496",
+}
 
 
 def _parse_iso(ts: str) -> datetime | None:
@@ -108,24 +118,86 @@ def _run_completed_timestamps(session: Session, user_id: str) -> list[str]:
     return [r.timestamp for r in rows]
 
 
-def _real_compute_hours(
-    session: Session, user_id: str, since: datetime | None = None,
-) -> float:
-    """Sum of real wall-clock durations of finished ingestion runs
-    (optionally only runs that started after `since`)."""
+def _user_artifact_metas(
+    session: Session, user_id: str,
+) -> list[tuple[ModelRow, dict]]:
+    """Every optimized model owned by the user, paired with the served
+    artifact's provenance (source / rung / sizeRatio / accuracy). Empty until a
+    pipeline has produced a compressed artifact."""
     rows = session.exec(
-        select(IngestionRunRow).where(IngestionRunRow.user_id == user_id)
+        select(ResultCacheRow).where(
+            ResultCacheRow.kind == "artifact_meta",
+            ResultCacheRow.user_id == user_id,
+        )
     ).all()
-    total_sec = 0.0
-    for r in rows:
-        if not r.finished_at:
+    out: list[tuple[ModelRow, dict]] = []
+    for row in rows:
+        model = session.get(ModelRow, row.model_id)
+        if model is None or model.user_id != user_id:
             continue
-        start, end = _parse_iso(r.started_at), _parse_iso(r.finished_at)
-        if start and end and end > start:
-            if since is not None and start < since:
-                continue
-            total_sec += (end - start).total_seconds()
-    return round(total_sec / 3600, 6)
+        meta = get_cached_result(session, row.model_id, "artifact_meta", user_id=user_id)
+        if meta:
+            out.append((model, meta))
+    return out
+
+
+def _cumulative_saved_spark(
+    events: list[tuple[str, float]], days: int = 16,
+) -> list[Spark]:
+    """Cumulative bytes-saved over the trailing window. Savings older than the
+    window seed the running total so the line reflects the true portfolio sum,
+    not a window-local reset."""
+    now = datetime.now(timezone.utc)
+    daily = [0.0] * days
+    seed = 0.0
+    for ts, saved in events:
+        dt = _parse_iso(ts)
+        if dt is None:
+            continue
+        age = (now.date() - dt.date()).days
+        if 0 <= age < days:
+            daily[days - 1 - age] += saved
+        elif age >= days:
+            seed += saved
+    start = now.date() - timedelta(days=days - 1)
+    out: list[Spark] = []
+    run = seed
+    for i in range(days):
+        run += daily[i]
+        out.append(Spark(t=(start + timedelta(days=i)).isoformat(), value=round(run, 0)))
+    return out
+
+
+def _size_reduced(
+    session: Session, user_id: str, days: int, label: str,
+) -> SizeReduced:
+    """Σ bytes saved + mean × smaller across models whose served artifact
+    records a real compression ratio (source=='pareto')."""
+    saved_total = 0.0
+    ratios: list[float] = []
+    events: list[tuple[str, float]] = []
+    for model, meta in _user_artifact_metas(session, user_id):
+        ratio = meta.get("sizeRatio")
+        size_bytes = meta.get("sizeBytes")
+        if not ratio or not size_bytes or ratio <= 0:
+            continue
+        baseline = size_bytes / ratio
+        saved = baseline - size_bytes
+        if saved <= 0:
+            continue
+        saved_total += saved
+        ratios.append(1.0 / ratio)
+        ts = model.last_optimized_at or model.last_learned_at
+        if ts:
+            events.append((ts, saved))
+    avg_x = round(sum(ratios) / len(ratios), 2) if ratios else 0.0
+    return SizeReduced(
+        bytesSaved=round(saved_total, 0),
+        avgReductionX=avg_x,
+        modelCount=len(ratios),
+        deltaText=_range_delta([ts for ts, _ in events], days, label),
+        spark=_cumulative_saved_spark(events),
+    )
 
 
 @router.get("/summary")
@@ -158,12 +230,6 @@ def summary(
     spark_days = 16
     deployment_created = [d.created_at for d in deployments if d.created_at]
 
-    used = _real_compute_hours(session, uid)
-    quota = get_settings().compute_quota_h
-    if quota > 0:
-        progress_note = f"{used / quota * 100:.1f}% of quota"
-    else:
-        progress_note = "no quota configured"
     return KpiSummary(
         activeRuns=KpiBlock(
             value=active, deltaText=_range_delta(started, days, label),
@@ -177,12 +243,7 @@ def summary(
             value=live, deltaText=_range_delta(deployment_created, days, label),
             spark=_daily_spark(deployment_created, days=spark_days),
         ),
-        computeUsed=ComputeUsed(
-            used=used, quota=quota,
-            label=f"{used:g} / {quota:g} compute·h" if quota > 0
-                  else f"{used:g} compute·h",
-            progressNote=progress_note,
-        ),
+        sizeReduced=_size_reduced(session, uid, days, label),
         periodLabel=label,
     )
 
@@ -206,64 +267,55 @@ def runs(
     ]
 
 
-def _latest_pareto_model(session: Session, user_id: str) -> tuple[ModelRow, dict] | None:
-    """Newest model (owned by the user) that has REAL cached Pareto trials."""
-    cache_rows = session.exec(
-        select(ResultCacheRow).where(
-            ResultCacheRow.kind == "pareto", ResultCacheRow.user_id == user_id,
-        )
-    ).all()
-    candidates: list[tuple[ModelRow, dict]] = []
-    for row in cache_rows:
-        model = session.get(ModelRow, row.model_id)
-        if model is not None and model.user_id == user_id:
-            cached = get_cached_result(session, row.model_id, "pareto", user_id=user_id)
-            if cached and cached.get("trials"):
-                candidates.append((model, cached))
-    if not candidates:
-        return None
-    candidates.sort(key=lambda mc: mc[0].last_optimized_at or mc[0].last_learned_at, reverse=True)
-    return candidates[0]
-
-
-@router.get("/pareto-snapshot", response_model_exclude_none=True)
-def pareto_snapshot(
+@router.get("/compression-map", response_model_exclude_none=True)
+def compression_map(
     current_user: CurrentUser,
     session: Session = Depends(get_session),
-) -> ParetoSnapshot:
-    latest = _latest_pareto_model(session, current_user.id)
-    if latest is None:
-        raise HTTPException(status_code=404, detail={
-            "code": "no_completed_runs",
-            "message": "No completed Pareto runs yet — upload a model to start one.",
-        })
-    model, cached = latest
-    trials = cached["trials"]
-    budget = cached["budget"]
+) -> CompressionMap:
+    """Portfolio value map: each optimized model's served pick plotted as size
+    reduction (×) vs accuracy retained (%). Pareto picks carry a measurable
+    ratio+accuracy and become points; certifiedCount/modelCount cover the whole
+    portfolio (ladder/fallback picks have no ratio to plot but still count)."""
+    uid = current_user.id
+    metas = _user_artifact_metas(session, uid)
+    certified = sum(1 for _, m in metas if m.get("source") in ("pareto", "ladder"))
 
-    # 36-point snapshot; frontier re-marked with the dashboard's 2D rule
-    # (best accuracy per latency band) over the REAL trials.
-    pts = [
-        ParetoSnapshotPoint(
-            id=f"p_{i}", accuracy=t["accuracy"], latency=t["latency"],
-            size=t["size"], onFrontier=False,
+    points: list[CompressionPoint] = []
+    for model, meta in metas:
+        ratio = meta.get("sizeRatio")
+        acc = meta.get("accuracy")
+        if not ratio or acc is None or ratio <= 0:
+            continue  # ladder/fallback picks carry no ratio+accuracy to plot
+        pareto = get_cached_result(session, model.id, "pareto", user_id=uid) or {}
+        base_acc = pareto.get("baseAccuracy")
+        max_drop = (pareto.get("budget") or {}).get("maxAccuracyDrop")
+        drop = round(base_acc - acc, 2) if base_acc is not None else 0.0
+        within = (
+            drop <= max_drop if base_acc is not None and max_drop is not None else True
         )
-        for i, t in enumerate(trials[:36])
-    ]
-    best = -math.inf
-    for p in sorted(pts, key=lambda p: p.latency):
-        if p.accuracy > best:
-            p.onFrontier = True
-            best = p.accuracy
-    return ParetoSnapshot(
-        modelId=model.id,
-        modelName=f"{cached['modelName']} · pareto",
-        subtitle=(
-            f"Pareto search · budget latency≤{budget['maxLatency']:g}ms, "
-            f"size≤{budget['maxSize']:g}MB"
-        ),
-        points=pts,
-        bestAccuracy=max((t["accuracy"] for t in trials), default=None),
+        latency = next(
+            (t.get("latency") for t in pareto.get("trials", [])
+             if t.get("trialNumber") == meta.get("trialNumber")),
+            None,
+        )
+        points.append(CompressionPoint(
+            modelId=model.id, name=model.name,
+            reductionX=round(1.0 / ratio, 2), sizeRatio=ratio,
+            accuracyRetained=acc, accuracyDrop=drop, withinTolerance=within,
+            certified=meta.get("source") in ("pareto", "ladder"),
+            rung=meta.get("rung"), latencyMs=latency,
+        ))
+
+    pool = [p for p in points if p.withinTolerance] or points
+    best = None
+    if pool:
+        b = max(pool, key=lambda p: p.reductionX)
+        best = CompressionBest(
+            modelId=b.modelId, reductionX=b.reductionX,
+            accuracyRetained=b.accuracyRetained,
+        )
+    return CompressionMap(
+        points=points, modelCount=len(metas), certifiedCount=certified, best=best,
     )
 
 
@@ -295,42 +347,42 @@ def top_models(
     return out
 
 
-@router.get("/compute-cost", response_model_exclude_none=True)
-def compute_cost(
+@router.get("/guarantee-coverage", response_model_exclude_none=True)
+def guarantee_coverage(
     current_user: CurrentUser,
     session: Session = Depends(get_session),
-) -> ComputeCost:
-    uid = current_user.id
-    # Scoped to the current calendar month — the card's "this month" label is
-    # now backed by the actual measurement window.
-    month_start = datetime.now(timezone.utc).replace(
-        day=1, hour=0, minute=0, second=0, microsecond=0)
-    used = _real_compute_hours(session, uid, since=month_start)
-    quota = get_settings().compute_quota_h
-
-    # Real per-phase wall time aggregated across all benchmark caches.
-    phase_totals: dict[str, float] = {}
-    bench_rows = session.exec(
-        select(ResultCacheRow).where(
-            ResultCacheRow.kind == "benchmark", ResultCacheRow.user_id == uid,
-        )
-    ).all()
-    for row in bench_rows:
-        cached = get_cached_result(session, row.model_id, "benchmark", user_id=uid)
-        for ph in (cached or {}).get("phases", []):
-            phase_totals[ph["name"]] = phase_totals.get(ph["name"], 0.0) + ph["sec"]
+) -> GuaranteeCoverage:
+    """How many optimized models carry a fidelity guarantee, plus the rung
+    distribution. Certified = the served artifact cleared a guarantee gate
+    (Pareto-certified or a ladder rung); a fallback pick is uncertified."""
+    metas = _user_artifact_metas(session, current_user.id)
+    certified = 0
+    buckets: dict[str, int] = {}
+    fidelities: list[float] = []
+    for _, meta in metas:
+        source = meta.get("source")
+        if source in ("pareto", "ladder"):
+            certified += 1
+            label = meta.get("rung") or source
+        else:
+            label = "fallback"
+        buckets[label] = buckets.get(label, 0) + 1
+        ofs = meta.get("ofs")
+        if ofs is not None:
+            fidelities.append(ofs)
     segments = [
-        CostSegment(label=name, value=round(sec, 1), color=_SEGMENT_COLORS[i % len(_SEGMENT_COLORS)])
-        for i, (name, sec) in enumerate(
-            sorted(phase_totals.items(), key=lambda kv: kv[1], reverse=True)
+        GuaranteeSegment(
+            label=label, value=count,
+            color=_RUNG_COLORS.get(label, _SEGMENT_COLORS[i % len(_SEGMENT_COLORS)]),
+        )
+        for i, (label, count) in enumerate(
+            sorted(buckets.items(), key=lambda kv: kv[1], reverse=True)
         )
     ]
-    return ComputeCost(
-        usedGpuHours=used, quotaGpuHours=quota,
-        periodLabel="this month",
-        # No cloud billing exists for local compute — these stay absent
-        # rather than invented (costUsd / region / resetDateText / noteText).
-        segments=segments,
+    avg_fid = round(sum(fidelities) / len(fidelities), 4) if fidelities else None
+    return GuaranteeCoverage(
+        certifiedCount=certified, totalModels=len(metas),
+        avgFidelity=avg_fid, segments=segments,
     )
 
 
