@@ -23,7 +23,14 @@ from datetime import datetime, timedelta, timezone
 from sqlmodel import Session, select
 
 from app.config import iso
-from app.dbmodels import DeploymentRow, InferenceEventRow, ModelRow, ResultCacheRow
+from app.dbmodels import (
+    DeploymentRow,
+    InferenceEventRow,
+    ModelRow,
+    ResultCacheRow,
+    TelemetrySnapshotRow,
+    TelemetryWindowStatsRow,
+)
 from app.services.inference import run_inference
 
 
@@ -124,6 +131,187 @@ def simulate_burst(
         "realServed": real_done,
         "errors": errors,
         "incidents": [k for _, _, k in windows],
+    }
+
+
+# ── hardware-aware fleet simulation ──────────────────────────────────────────
+# Demo only (gated by PEOPS_TELEMETRY_SIM_ENABLED): on a machine without an
+# NVIDIA GPU the real serve path can't produce GPU/multi-hardware data, so this
+# injects a believable serving fleet — the same compressed artifact running on a
+# T4, an A10G, an Apple CoreML box and a hosted x86 CPU — so the per-hardware
+# speed + GPU resource views are visible and verifiable. Rows are written as
+# ordinary client telemetry (events + snapshots + windows), identical in shape
+# to what peops-sdk ships, so aggregation treats them exactly like real fleets.
+
+# Each profile: relative inference cost + the hardware identity the dashboard
+# attributes it to. Latencies are deliberately ordered GPU < CoreML < CPU so the
+# per-hardware comparison and the $/1M cost lens tell a real story.
+_FLEET: list[dict] = [
+    {
+        "host": "ip-10-0-3-12.gpu", "infer": 1.9, "cpu": (8, 16),
+        "runtime": {
+            "os": "Linux", "arch": "x86_64", "provider": "CUDAExecutionProvider",
+            "activeProvider": "CUDAExecutionProvider",
+            "availableProviders": "TensorrtExecutionProvider,CUDAExecutionProvider,CPUExecutionProvider",
+            "cpuModel": "Intel Xeon Platinum 8259CL", "cpuCores": 8, "ramTotalMb": 32000.0,
+            "gpuName": "NVIDIA A10G", "gpuCount": 1, "gpuMemTotalMb": 24000.0,
+            "cudaVersion": "12.4", "ort": "1.18.1", "python": "3.11.9",
+        },
+        "gpu": {"util": (62, 84), "mem": (2600, 3400), "temp": (54, 68)},
+    },
+    {
+        "host": "ip-10-0-4-21.gpu", "infer": 3.2, "cpu": (10, 18),
+        "runtime": {
+            "os": "Linux", "arch": "x86_64", "provider": "CUDAExecutionProvider",
+            "activeProvider": "CUDAExecutionProvider",
+            "availableProviders": "CUDAExecutionProvider,CPUExecutionProvider",
+            "cpuModel": "Intel Xeon E5-2686 v4", "cpuCores": 4, "ramTotalMb": 16000.0,
+            "gpuName": "NVIDIA T4", "gpuCount": 1, "gpuMemTotalMb": 16000.0,
+            "cudaVersion": "12.2", "ort": "1.18.1", "python": "3.10.14",
+        },
+        "gpu": {"util": (48, 72), "mem": (1900, 2600), "temp": (49, 63)},
+    },
+    {
+        "host": "edge-m3.local", "infer": 6.8, "cpu": (22, 38),
+        "runtime": {
+            "os": "Darwin", "arch": "arm64", "provider": "CoreMLExecutionProvider",
+            "activeProvider": "CoreMLExecutionProvider",
+            "availableProviders": "CoreMLExecutionProvider,CPUExecutionProvider",
+            "cpuModel": "Apple M3", "cpuCores": 8, "ramTotalMb": 16000.0,
+            "ort": "1.18.0", "python": "3.12.4",
+        },
+        "gpu": None,
+    },
+    {
+        "host": "ip-10-0-1-9.cpu", "infer": 27.5, "cpu": (55, 80),
+        "runtime": {
+            "os": "Linux", "arch": "x86_64", "provider": "CPUExecutionProvider",
+            "activeProvider": "CPUExecutionProvider",
+            "availableProviders": "CPUExecutionProvider",
+            "cpuModel": "Intel Xeon Platinum 8375C", "cpuCores": 2, "ramTotalMb": 8000.0,
+            "ort": "1.18.1", "python": "3.11.9",
+        },
+        "gpu": None,
+    },
+]
+
+_SDK_VERSION = "0.2.0"
+
+
+def _fleet_output() -> dict:
+    """A believable classifier output summary for a window (top-k class share +
+    confidence histogram), matching the SDK's window stat shape."""
+    classes = random.sample(range(1000), 6)
+    shares = sorted((random.random() for _ in classes), reverse=True)
+    total = sum(shares) or 1.0
+    class_dist = {
+        str(c): round(s / total, 4)
+        for c, s in zip(classes, shares, strict=True)
+    }
+    hist = [0] * 16
+    for _ in range(64):
+        b = min(15, int(abs(random.gauss(11, 3))))
+        hist[b] += 1
+    return {
+        "classDist": class_dist,
+        "hist": hist,
+        "top1ConfMean": round(random.uniform(0.62, 0.92), 4),
+        "entropyMean": round(random.uniform(0.4, 1.6), 4),
+    }
+
+
+def simulate_fleet(
+    session: Session,
+    dep: DeploymentRow,
+    model: ModelRow,
+    *,
+    count: int = 480,
+    hours: int = 6,
+) -> dict:
+    """Inject a multi-hardware serving fleet (events + GPU snapshots + windows)
+    for a deployment. Returns a small summary. Demo affordance."""
+    now = datetime.now(timezone.utc)
+    rows: list = []
+    per_host = max(1, count // len(_FLEET))
+    snaps_per_host = 8
+    last_event_ts: str | None = None
+
+    for fi, profile in enumerate(_FLEET):
+        client_id = f"fleet_{fi}_{profile['host'].split('.')[0]}"
+        rt = profile["runtime"]
+        base = profile["infer"]
+
+        # 1) Inference events spread over the window (lognormal jitter + rare error).
+        for _ in range(per_host):
+            frac = random.random()
+            ts_dt = now - timedelta(hours=hours) + timedelta(hours=hours * frac)
+            if random.random() > _diurnal_weight(ts_dt):
+                ts_dt = now - timedelta(hours=hours) + timedelta(
+                    hours=hours * random.random())
+            infer = base * math.exp(random.gauss(0.0, 0.22))
+            success = random.random() > 0.004
+            ts = iso(ts_dt)
+            rows.append(InferenceEventRow(
+                user_id=model.user_id, model_id=model.id, deployment_id=dep.id,
+                ts=ts, latency_ms=round(infer if success else 0.0, 3),
+                success=success, error_code=None if success else "inference_error",
+                region=dep.region, source="client",
+                latency_pre_ms=round(random.uniform(0.2, 0.7), 3),
+                latency_post_ms=round(random.uniform(0.1, 0.4), 3),
+                client_id=client_id, input_sig="input:1x3x224x224:float32",
+            ))
+            if last_event_ts is None or ts > last_event_ts:
+                last_event_ts = ts
+
+        # 2) Periodic system snapshots — carry the hardware fingerprint + GPU sample.
+        rpm = per_host / max(1e-6, hours * 60.0)
+        for si in range(snaps_per_host):
+            ts_dt = now - timedelta(hours=hours) + timedelta(
+                hours=hours * (si + 0.5) / snaps_per_host)
+            cpu_lo, cpu_hi = profile["cpu"]
+            gpu = profile["gpu"]
+            snap = TelemetrySnapshotRow(
+                user_id=model.user_id, model_id=model.id, deployment_id=dep.id,
+                client_id=client_id, ts=iso(ts_dt),
+                cpu_pct=round(random.uniform(cpu_lo, cpu_hi), 2),
+                rss_mb=round(random.uniform(220, 680), 1),
+                throughput_rpm=round(rpm * random.uniform(0.8, 1.2), 2),
+                dropped_events=0, sdk_version=_SDK_VERSION,
+                runtime_json=json.dumps({**rt, "host": profile["host"]}),
+            )
+            if gpu is not None:
+                snap.gpu_util_pct = round(random.uniform(*gpu["util"]), 2)
+                snap.gpu_mem_used_mb = round(random.uniform(*gpu["mem"]), 1)
+                snap.gpu_temp_c = round(random.uniform(*gpu["temp"]), 1)
+            rows.append(snap)
+
+        # 3) A couple of window stats so output distribution views have fleet data.
+        for wi in range(3):
+            w0 = now - timedelta(hours=hours) + timedelta(hours=hours * wi / 3)
+            rows.append(TelemetryWindowStatsRow(
+                user_id=model.user_id, model_id=model.id, deployment_id=dep.id,
+                client_id=client_id, window_start=iso(w0),
+                window_end=iso(w0 + timedelta(minutes=2)), n=per_host // 3,
+                input_stats_json=json.dumps({"input": {
+                    "mean": round(random.uniform(-0.1, 0.1), 4),
+                    "std": round(random.uniform(0.9, 1.1), 4),
+                    "min": -4.0, "max": 4.0, "nanPct": 0.0}}),
+                output_json=json.dumps(_fleet_output()),
+            ))
+
+    if last_event_ts and (dep.last_event_at is None or last_event_ts > dep.last_event_at):
+        dep.last_event_at = last_event_ts
+        session.add(dep)
+    session.add_all(rows)
+    session.commit()
+    return {
+        "deploymentId": dep.id,
+        "hosts": len(_FLEET),
+        "events": per_host * len(_FLEET),
+        "snapshots": snaps_per_host * len(_FLEET),
+        "gpuHosts": sum(1 for p in _FLEET if p["gpu"] is not None),
+        "devices": [p["runtime"].get("gpuName") or p["runtime"]["cpuModel"]
+                    for p in _FLEET],
     }
 
 

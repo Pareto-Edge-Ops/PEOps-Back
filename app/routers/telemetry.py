@@ -249,9 +249,52 @@ def clients(
             "cpuPct": r.cpu_pct,
             "memMb": r.rss_mb,
             "droppedEvents": r.dropped_events,
+            # Hardware identity + live accelerator sample (new).
+            "cpuModel": runtime.get("cpuModel", ""),
+            "cpuCores": runtime.get("cpuCores", 0),
+            "ramTotalMb": runtime.get("ramTotalMb", 0.0),
+            "activeProvider": runtime.get("activeProvider", runtime.get("provider", "")),
+            "gpuName": runtime.get("gpuName", ""),
+            "gpuMemTotalMb": runtime.get("gpuMemTotalMb", 0.0),
+            "cudaVersion": runtime.get("cudaVersion", ""),
+            "gpuUtilPct": r.gpu_util_pct,
+            "gpuMemUsedMb": r.gpu_mem_used_mb,
+            "gpuTempC": r.gpu_temp_c,
         })
     out.sort(key=lambda c: c["lastSeen"], reverse=True)
     return out
+
+
+@router.get("/hardware")
+def hardware(
+    model_id: str,
+    current_user: CurrentUser,
+    range: str = Query(default="24h"),  # noqa: A002
+    session: Session = Depends(get_session),
+) -> list[dict]:
+    """Per-hardware inference speed — the same compressed artifact's measured
+    latency/throughput/cost grouped by the accelerator that served it (CPU vs
+    CUDA GPU vs Apple CoreML vs hosted). Empty until real traffic exists."""
+    _model(session, model_id, current_user.id)
+    from app.services import hardware as hw
+
+    return hw.hardware_breakdown(session, model_id, _range(range))
+
+
+@router.get("/resources")
+def resources(
+    model_id: str,
+    current_user: CurrentUser,
+    range: str = Query(default="24h"),  # noqa: A002
+    session: Session = Depends(get_session),
+) -> dict:
+    """Resource utilization over time — CPU%, host memory, GPU util% and GPU
+    VRAM sampled from SDK snapshots, time-bucketed over the range. `hasGpu` is
+    false when no serving host reported an NVIDIA GPU."""
+    _model(session, model_id, current_user.id)
+    from app.services import hardware as hw
+
+    return hw.resource_series(session, model_id, _range(range))
 
 
 @router.get("/breakdown")
@@ -359,6 +402,9 @@ class SimulateRequest(BaseModel):
     count: int = 240
     hours: int = 6
     incidents: bool = True
+    # When true, also inject a multi-hardware serving fleet (GPU/CoreML/CPU) so
+    # the per-hardware speed + GPU resource views have data on a box without a GPU.
+    fleet: bool = False
 
 
 @router.post("/simulate")
@@ -393,6 +439,12 @@ def simulate(
         hours=max(1, min(req.hours, 168)),
         incidents=req.incidents,
     )
+    if req.fleet:
+        summary["fleet"] = traffic_sim.simulate_fleet(
+            session, dep, model,
+            count=max(1, min(req.count, 2000)),
+            hours=max(1, min(req.hours, 168)),
+        )
     summary["monitor"] = drift_monitor_pass(session)
     return summary
 

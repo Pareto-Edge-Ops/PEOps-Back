@@ -170,7 +170,15 @@ class TelemetrySnapshotRow(SQLModel, table=True):
     throughput_rpm: float = 0.0
     dropped_events: int = 0
     sdk_version: str = ""
-    runtime_json: str = "{}"   # {"python","ort","os","arch","provider","host"}
+    # {"python","ort","os","arch","provider","host", + hardware identity:
+    #  "cpuModel","cpuCores","ramTotalMb","availableProviders","activeProvider",
+    #  "gpuName","gpuCount","gpuMemTotalMb","cudaVersion"}
+    runtime_json: str = "{}"
+    # Dynamic accelerator sample (NULL when the host has no NVIDIA GPU) — kept as
+    # real columns (not in runtime_json) so the resource time-series query is cheap.
+    gpu_util_pct: float | None = None
+    gpu_mem_used_mb: float | None = None
+    gpu_temp_c: float | None = None
 
 
 class TelemetryWindowStatsRow(SQLModel, table=True):

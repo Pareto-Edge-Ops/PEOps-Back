@@ -103,7 +103,23 @@ def ingest_batch(
                 "arch": snap.arch[:32],
                 "provider": snap.provider[:64],
                 "host": snap.host[:128],
+                # Hardware identity (static).
+                "cpuModel": snap.cpuModel[:96],
+                "cpuCores": int(snap.cpuCores),
+                "ramTotalMb": round(float(snap.ramTotalMb), 1),
+                "availableProviders": snap.availableProviders[:256],
+                "activeProvider": (snap.activeProvider or snap.provider)[:64],
+                "gpuName": snap.gpuName[:96],
+                "gpuCount": int(snap.gpuCount),
+                "gpuMemTotalMb": round(float(snap.gpuMemTotalMb), 1),
+                "cudaVersion": snap.cudaVersion[:32],
             }),
+            gpu_util_pct=(
+                round(float(snap.gpuUtilPct), 2) if snap.gpuUtilPct is not None else None),
+            gpu_mem_used_mb=(
+                round(float(snap.gpuMemUsedMb), 1) if snap.gpuMemUsedMb is not None else None),
+            gpu_temp_c=(
+                round(float(snap.gpuTempC), 1) if snap.gpuTempC is not None else None),
         ))
         accepted["snapshots"] += 1
 

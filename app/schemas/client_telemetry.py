@@ -32,6 +32,20 @@ class ClientSnapshot(BaseModel):
     arch: str = ""
     provider: str = ""
     host: str = ""
+    # Hardware identity (static, new in the hardware-aware SDK).
+    cpuModel: str = ""
+    cpuCores: int = 0
+    ramTotalMb: float = 0.0
+    availableProviders: str = ""     # comma-joined ORT providers
+    activeProvider: str = ""         # provider the serving session actually bound
+    gpuName: str = ""
+    gpuCount: int = 0
+    gpuMemTotalMb: float = 0.0
+    cudaVersion: str = ""
+    # Dynamic accelerator sample (None when the host has no NVIDIA GPU).
+    gpuUtilPct: float | None = None
+    gpuMemUsedMb: float | None = None
+    gpuTempC: float | None = None
 
 
 class InputStat(BaseModel):
