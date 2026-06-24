@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     # --- Google OAuth (optional sign-in method) ---
     google_client_id: str | None = None
     google_client_secret: str | None = None
-    google_redirect_uri: str = "http://localhost:8080/api/auth/google/callback"
+    google_redirect_uri: str = "http://localhost:5173/api/auth/google/callback"
     post_login_path: str = "/dashboard"    # where the SPA lands after OAuth
 
     # --- uploads / limits ---
