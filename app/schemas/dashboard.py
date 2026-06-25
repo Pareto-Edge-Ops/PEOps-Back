@@ -60,6 +60,7 @@ class CompressionPoint(BaseModel):
     certified: bool            # cleared a guarantee gate (source ≠ fallback)
     rung: str | None = None    # guarantee rung code (PARETO_CERTIFIED, FP16, …)
     latencyMs: float | None = None
+    estCostPer1M: float | None = None   # single-stream $/1M on a reference x86 CPU
 
 
 class CompressionBest(BaseModel):

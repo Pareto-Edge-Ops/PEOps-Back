@@ -19,11 +19,11 @@ from app.dbmodels import (
     ActivityRow,
     DeploymentRow,
     ModelRow,
-    ResultCacheRow,
     RunRow,
 )
-from app.repositories import get_cached_result
+from app.repositories import get_cached_result, user_artifact_metas
 from app.schemas.common import Spark
+from app.schemas.cost import WorkspaceCostSavings
 from app.schemas.dashboard import (
     ActivityEvent,
     CompressionBest,
@@ -37,6 +37,7 @@ from app.schemas.dashboard import (
     SizeReduced,
     TopModel,
 )
+from app.services.hardware import _CPU_X86_HOURLY, est_cost_per_million
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -118,29 +119,6 @@ def _run_completed_timestamps(session: Session, user_id: str) -> list[str]:
     return [r.timestamp for r in rows]
 
 
-def _user_artifact_metas(
-    session: Session, user_id: str,
-) -> list[tuple[ModelRow, dict]]:
-    """Every optimized model owned by the user, paired with the served
-    artifact's provenance (source / rung / sizeRatio / accuracy). Empty until a
-    pipeline has produced a compressed artifact."""
-    rows = session.exec(
-        select(ResultCacheRow).where(
-            ResultCacheRow.kind == "artifact_meta",
-            ResultCacheRow.user_id == user_id,
-        )
-    ).all()
-    out: list[tuple[ModelRow, dict]] = []
-    for row in rows:
-        model = session.get(ModelRow, row.model_id)
-        if model is None or model.user_id != user_id:
-            continue
-        meta = get_cached_result(session, row.model_id, "artifact_meta", user_id=user_id)
-        if meta:
-            out.append((model, meta))
-    return out
-
-
 def _cumulative_saved_spark(
     events: list[tuple[str, float]], days: int = 16,
 ) -> list[Spark]:
@@ -176,7 +154,7 @@ def _size_reduced(
     saved_total = 0.0
     ratios: list[float] = []
     events: list[tuple[str, float]] = []
-    for model, meta in _user_artifact_metas(session, user_id):
+    for model, meta in user_artifact_metas(session, user_id):
         ratio = meta.get("sizeRatio")
         size_bytes = meta.get("sizeBytes")
         if not ratio or not size_bytes or ratio <= 0:
@@ -277,7 +255,7 @@ def compression_map(
     ratio+accuracy and become points; certifiedCount/modelCount cover the whole
     portfolio (ladder/fallback picks have no ratio to plot but still count)."""
     uid = current_user.id
-    metas = _user_artifact_metas(session, uid)
+    metas = user_artifact_metas(session, uid)
     certified = sum(1 for _, m in metas if m.get("source") in ("pareto", "ladder"))
 
     points: list[CompressionPoint] = []
@@ -304,6 +282,10 @@ def compression_map(
             accuracyRetained=acc, accuracyDrop=drop, withinTolerance=within,
             certified=meta.get("source") in ("pareto", "ladder"),
             rung=meta.get("rung"), latencyMs=latency,
+            # Single-stream $/1M on a reference x86 CPU — a $ chip on each point.
+            estCostPer1M=(
+                est_cost_per_million(latency, _CPU_X86_HOURLY) if latency else None
+            ),
         ))
 
     pool = [p for p in points if p.withinTolerance] or points
@@ -317,6 +299,19 @@ def compression_map(
     return CompressionMap(
         points=points, modelCount=len(metas), certifiedCount=certified, best=best,
     )
+
+
+@router.get("/cost-savings", response_model_exclude_none=True)
+def cost_savings(
+    current_user: CurrentUser,
+    session: Session = Depends(get_session),
+) -> WorkspaceCostSavings:
+    """Workspace $ rollup: monthly inference cost original vs compressed across
+    deployments with measured traffic, plus the average % cheaper across all
+    optimized models (honest even at zero live traffic)."""
+    from app.services import cost as cost_svc
+
+    return WorkspaceCostSavings(**cost_svc.workspace_cost_savings(session, current_user.id))
 
 
 @router.get("/top-models")
@@ -355,7 +350,7 @@ def guarantee_coverage(
     """How many optimized models carry a fidelity guarantee, plus the rung
     distribution. Certified = the served artifact cleared a guarantee gate
     (Pareto-certified or a ladder rung); a fallback pick is uncertified."""
-    metas = _user_artifact_metas(session, current_user.id)
+    metas = user_artifact_metas(session, current_user.id)
     certified = 0
     buckets: dict[str, int] = {}
     fidelities: list[float] = []

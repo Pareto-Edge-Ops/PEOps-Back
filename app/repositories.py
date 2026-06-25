@@ -94,6 +94,31 @@ def get_cached_result(
     return json.loads(row.payload) if row else None
 
 
+def user_artifact_metas(
+    session: Session, user_id: str,
+) -> list[tuple[ModelRow, dict]]:
+    """Every optimized model owned by the user, paired with the served
+    artifact's provenance (source / rung / sizeRatio / sizeBytes / accuracy).
+    Empty until a pipeline has produced a compressed artifact. Shared by the
+    dashboard (size-reduced / compression-map / guarantee-coverage) and the
+    cost lens so both read the same portfolio of served picks."""
+    rows = session.exec(
+        select(ResultCacheRow).where(
+            ResultCacheRow.kind == "artifact_meta",
+            ResultCacheRow.user_id == user_id,
+        )
+    ).all()
+    out: list[tuple[ModelRow, dict]] = []
+    for row in rows:
+        model = session.get(ModelRow, row.model_id)
+        if model is None or model.user_id != user_id:
+            continue
+        meta = get_cached_result(session, row.model_id, "artifact_meta", user_id=user_id)
+        if meta:
+            out.append((model, meta))
+    return out
+
+
 def put_cached_result(
     session: Session, model_id: str, kind: str, payload: dict, user_id: str,
 ) -> None:

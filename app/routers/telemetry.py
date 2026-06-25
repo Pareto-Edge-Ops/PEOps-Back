@@ -32,6 +32,7 @@ from app.dbmodels import (
     TelemetryWindowStatsRow,
 )
 from app.repositories import get_cached_result, get_model, owned_model
+from app.schemas.cost import ModelCostSummary
 from app.schemas.telemetry import (
     Alert,
     Deployment,
@@ -295,6 +296,26 @@ def resources(
     from app.services import hardware as hw
 
     return hw.resource_series(session, model_id, _range(range))
+
+
+@router.get("/cost")
+def cost(
+    model_id: str,
+    current_user: CurrentUser,
+    range: str = Query(default="24h"),  # noqa: A002
+    projectQps: float | None = Query(default=None, ge=0),
+    session: Session = Depends(get_session),
+) -> ModelCostSummary:
+    """$ lens: compressed vs original $/1M, savings %, and monthly cost at
+    measured (or projected) traffic. Original cost is a counterfactual (compressed
+    × benchmarked latency ratio); a monthly figure is asserted only from real
+    measured QPS. Same live-vs-benchmark gate + structured 404 as the siblings."""
+    model = _model(session, model_id, current_user.id)
+    from app.services import cost as cost_svc
+
+    return ModelCostSummary(
+        **cost_svc.model_cost_summary(session, model, _range(range), projectQps)
+    )
 
 
 @router.get("/breakdown")
