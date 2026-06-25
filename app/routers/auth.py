@@ -36,6 +36,7 @@ from app.schemas.auth import (
     UpdateProfileRequest,
 )
 from app.schemas.common import OkResponse
+from app.services.limits import limiter
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 log = logging.getLogger("peops.auth")
@@ -81,7 +82,9 @@ def _me(user: UserRow) -> MeResponse:
 
 
 @router.post("/signup", response_model=MeResponse)
+@limiter.limit(get_settings().rate_limit_auth)
 def signup(
+    request: Request,
     body: SignupRequest,
     response: Response,
     session: Session = Depends(get_session),
@@ -110,7 +113,9 @@ def signup(
 
 
 @router.post("/login", response_model=MeResponse)
+@limiter.limit(get_settings().rate_limit_auth)
 def login(
+    request: Request,
     body: LoginRequest,
     response: Response,
     session: Session = Depends(get_session),
@@ -149,7 +154,9 @@ def update_profile(
 
 
 @router.post("/me/password", response_model=OkResponse)
+@limiter.limit(get_settings().rate_limit_auth)
 def change_password(
+    request: Request,
     body: ChangePasswordRequest,
     current_user: CurrentUser,
     session: Session = Depends(get_session),

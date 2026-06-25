@@ -27,7 +27,7 @@ def build_auth_url(state: str) -> str:
     params = {
         "response_type": "code",
         "client_id": settings.google_client_id or "",
-        "redirect_uri": settings.google_redirect_uri,
+        "redirect_uri": settings.effective_google_redirect_uri,
         "scope": SCOPES,
         "state": state,
         "access_type": "online",
@@ -44,7 +44,7 @@ def exchange_code(code: str) -> dict:
         "code": code,
         "client_id": settings.google_client_id or "",
         "client_secret": settings.google_client_secret or "",
-        "redirect_uri": settings.google_redirect_uri,
+        "redirect_uri": settings.effective_google_redirect_uri,
         "grant_type": "authorization_code",
     }
     try:

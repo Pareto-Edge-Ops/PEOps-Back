@@ -57,6 +57,32 @@ async def lifespan(app: FastAPI):
 
     with Session(get_engine()) as session:
         seed_if_empty(session)
+        # Self-heal the deploy badge invariant (is_deployed ⟹ status "deployed").
+        # Wrapped so a failure can never block startup. See repositories for the
+        # narrow, idempotent transition rules.
+        try:
+            from app.repositories import reconcile_deploy_status
+
+            flipped = reconcile_deploy_status(session)
+            log.info(
+                "deploy-status reconcile: flipped %d model(s) to 'deployed': %s",
+                len(flipped), flipped,
+            )
+        except Exception:  # noqa: BLE001 — reconcile must never block startup
+            log.exception("deploy-status reconcile failed")
+
+        # Fail any ingestion run left 'streaming' with no live worker (e.g. a
+        # worker that died mid-pipeline) so models don't read 'analyzing' forever.
+        try:
+            from app.repositories import reconcile_orphaned_runs
+
+            reaped = reconcile_orphaned_runs(session, settings.job_timeout_sec + 300)
+            if reaped:
+                log.warning(
+                    "orphaned-run reaper: failed %d stuck run(s): %s", len(reaped), reaped
+                )
+        except Exception:  # noqa: BLE001 — reaper must never block startup
+            log.exception("orphaned-run reconcile failed")
     log.info("PEOps backend ready (db=%s storage=%s inline_jobs=%s)",
              "sqlite" if settings.is_sqlite else "postgres",
              settings.storage_backend, settings.inline_jobs)

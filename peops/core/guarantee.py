@@ -33,6 +33,7 @@ so control always reaches R0.
 
 from __future__ import annotations
 
+import multiprocessing
 import os
 import tempfile
 import time
@@ -188,11 +189,58 @@ def _quantize_ml_native(
     return transformer.apply(model, actions) if actions else model
 
 
-def _convert_fp16_real(model: onnx.ModelProto) -> onnx.ModelProto:
-    """Real float16 weight conversion (halves standard-domain weight storage)."""
+# Upper bound on the isolated FP16 conversion. Weight-only float16 conversion is
+# fast even for large models; this only guards a wedged child.
+_FP16_ISOLATION_TIMEOUT_SEC = 600
+
+
+def _fp16_convert_child(in_path: str, out_path: str) -> None:
+    """Child-process body: load → convert to float16 → save. Runs in a fresh
+    interpreter (spawn), so a native abort here dies in isolation."""
+    import onnx as _onnx
     from onnxconverter_common import float16
 
-    return float16.convert_float_to_float16(model, keep_io_types=True)
+    model = _onnx.load(in_path)
+    converted = float16.convert_float_to_float16(model, keep_io_types=True)
+    _onnx.save(converted, out_path)
+
+
+def _convert_fp16_real(model: onnx.ModelProto) -> onnx.ModelProto:
+    """Real float16 weight conversion (halves standard-domain weight storage).
+
+    Runs onnxconverter-common's float16 pass in a short-lived ``spawn`` child
+    process. That pass has been observed to corrupt the heap (glibc
+    "free(): invalid pointer" → SIGABRT, e.g. on arm64) on some models; a native
+    abort cannot be caught by Python and would take the whole worker process
+    down. Isolating it means a crash becomes a non-zero child exit → RuntimeError
+    here, which the ladder's per-rung try/except turns into a graceful fallback
+    to the next rung instead of a dead worker. The conversion is deterministic,
+    so the isolated result is byte-identical to an in-process call."""
+    ctx = multiprocessing.get_context("spawn")
+    tmpdir = tempfile.mkdtemp(prefix="peops_fp16_")
+    in_path = os.path.join(tmpdir, "in.onnx")
+    out_path = os.path.join(tmpdir, "out.onnx")
+    try:
+        onnx.save(model, in_path)
+        proc = ctx.Process(target=_fp16_convert_child, args=(in_path, out_path))
+        proc.start()
+        proc.join(_FP16_ISOLATION_TIMEOUT_SEC)
+        if proc.is_alive():
+            proc.terminate()
+            proc.join()
+            raise RuntimeError("FP16 conversion timed out in isolated subprocess")
+        if proc.exitcode != 0:
+            raise RuntimeError(
+                f"FP16 conversion crashed in isolated subprocess (exit={proc.exitcode})")
+        if not os.path.exists(out_path):
+            raise RuntimeError("FP16 conversion produced no output")
+        return onnx.load(out_path)
+    finally:
+        for p in (in_path, out_path):
+            if os.path.exists(p):
+                os.remove(p)
+        if os.path.exists(tmpdir):
+            os.rmdir(tmpdir)
 
 
 def _quantize_w8_weight_only(

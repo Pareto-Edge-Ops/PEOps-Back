@@ -136,13 +136,29 @@ async def run_drift_monitor(ctx: dict) -> None:
 
 async def _worker_startup(ctx: dict) -> None:
     # The worker is a fresh process: make sure the DB schema + storage exist.
-    from app.db import get_engine, init_db
+    import logging
+
+    from app.db import get_engine, init_db, open_session
     from app.services.storage import get_storage
 
     get_engine()
     if get_settings().is_sqlite:
         init_db()
     get_storage()
+
+    # A restarted worker (e.g. after a native crash) abandoned whatever it was
+    # running — arq does not resume in-flight jobs. Fail any ingestion run too old
+    # to still be alive so its model doesn't read 'analyzing' forever.
+    try:
+        from app.repositories import reconcile_orphaned_runs
+
+        with open_session() as session:
+            reaped = reconcile_orphaned_runs(session, get_settings().job_timeout_sec + 300)
+        if reaped:
+            logging.getLogger("peops").warning(
+                "worker-startup orphaned-run reaper: failed %d run(s): %s", len(reaped), reaped)
+    except Exception:  # noqa: BLE001 — reaper must never block worker startup
+        logging.getLogger("peops").exception("worker-startup reaper failed")
 
 
 def _cron_jobs():

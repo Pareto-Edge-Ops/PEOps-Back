@@ -44,6 +44,49 @@ def reconcile_deploy_status(session: Session) -> list[str]:
     return flipped
 
 
+def reconcile_orphaned_runs(session: Session, max_age_sec: int) -> list[str]:
+    """Fail ingestion runs stuck in 'streaming' with no live worker behind them —
+    e.g. after a worker process died mid-pipeline. A native crash (SIGABRT) skips
+    BOTH the cooperative deadline and arq's own timeout, so such a run would
+    otherwise hang forever and its model would read 'analyzing' indefinitely.
+
+    Age-based so it can NEVER reap a genuinely in-flight job: a real job cannot
+    outlive ``job_timeout_sec``, so only runs whose ``started_at`` is older than
+    ``max_age_sec`` (job timeout + margin) are touched. Idempotent. Returns the
+    reaped run ids.
+    """
+    now = datetime.now(timezone.utc)
+    reaped: list[str] = []
+    streaming = session.exec(
+        select(IngestionRunRow).where(IngestionRunRow.status == "streaming")
+    ).all()
+    for run in streaming:
+        try:
+            started = datetime.fromisoformat(run.started_at)
+        except (ValueError, TypeError):
+            continue  # unparseable timestamp — leave it untouched
+        if started.tzinfo is None:
+            started = started.replace(tzinfo=timezone.utc)
+        if (now - started).total_seconds() < max_age_sec:
+            continue  # still within a plausible job lifetime — could be running
+        run.status = "failed"
+        run.error = run.error or "orphaned — worker stopped before the run finished"
+        run.finished_at = iso(now)
+        session.add(run)
+        # Release the model from its stuck 'analyzing'/'optimizing' state so the
+        # UI stops showing an endless analysis and the user can retry.
+        model = session.get(ModelRow, run.model_id)
+        if (model is not None and model.status in ("analyzing", "optimizing")
+                and model.analysis_run_id == run.id):
+            model.status = "failed"
+            model.analysis_run_id = None
+            session.add(model)
+        reaped.append(run.id)
+    if reaped:
+        session.commit()
+    return reaped
+
+
 def model_row_to_item(row: ModelRow) -> ModelListItem:
     return ModelListItem(
         id=row.id,

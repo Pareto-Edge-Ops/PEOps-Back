@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 from functools import lru_cache
+from urllib.parse import urlparse
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -56,7 +57,9 @@ class Settings(BaseSettings):
     # --- Google OAuth (optional sign-in method) ---
     google_client_id: str | None = None
     google_client_secret: str | None = None
-    google_redirect_uri: str = "http://localhost:5173/api/auth/google/callback"
+    # Leave unset in production: the callback is then derived from public_origin
+    # (see effective_google_redirect_uri) so it can never drift to a dev host.
+    google_redirect_uri: str | None = None
     post_login_path: str = "/dashboard"    # where the SPA lands after OAuth
 
     # --- uploads / limits ---
@@ -166,6 +169,17 @@ class Settings(BaseSettings):
     def google_enabled(self) -> bool:
         return bool(self.google_client_id and self.google_client_secret)
 
+    @property
+    def effective_google_redirect_uri(self) -> str:
+        """OAuth callback URL. Prefers an explicit PEOPS_GOOGLE_REDIRECT_URI;
+        otherwise derives it from public_origin so a production deploy only has
+        to set PEOPS_PUBLIC_ORIGIN. Falls back to the localhost dev default."""
+        if self.google_redirect_uri:
+            return self.google_redirect_uri
+        if self.public_origin:
+            return f"{self.public_origin.rstrip('/')}/api/auth/google/callback"
+        return "http://localhost:5173/api/auth/google/callback"
+
     def validate_runtime(self) -> list[str]:
         """Fail-fast checks at startup. Returns a list of warnings (non-fatal);
         raises ValueError on misconfiguration that would break the app."""
@@ -179,6 +193,26 @@ class Settings(BaseSettings):
                 "Google OAuth is half-configured — set BOTH PEOPS_GOOGLE_CLIENT_ID and "
                 "PEOPS_GOOGLE_CLIENT_SECRET (or neither). Google sign-in stays disabled."
             )
+        # An HTTPS public origin must serve a Secure session cookie; otherwise the
+        # cookie lacks the Secure attribute and could leak over a downgraded request.
+        if (self.public_origin and self.public_origin.startswith("https://")
+                and not self.cookie_secure):
+            warnings.append(
+                "PEOPS_PUBLIC_ORIGIN is HTTPS but PEOPS_COOKIE_SECURE=0 — the session "
+                "cookie will lack the Secure attribute. Set PEOPS_COOKIE_SECURE=1 in production."
+            )
+        # The OAuth callback must live on the public origin, or Google redirects
+        # users to an unreachable host (e.g. a leftover localhost dev value).
+        if self.google_enabled and self.public_origin:
+            want = urlparse(self.public_origin).netloc
+            got = urlparse(self.effective_google_redirect_uri).netloc
+            if want and got and want != got:
+                warnings.append(
+                    f"PEOPS_GOOGLE_REDIRECT_URI host ({got}) does not match "
+                    f"PEOPS_PUBLIC_ORIGIN host ({want}) — Google sign-in would redirect "
+                    "users to the wrong host. Unset PEOPS_GOOGLE_REDIRECT_URI to derive it "
+                    "from PEOPS_PUBLIC_ORIGIN, or set it to the public callback URL."
+                )
         if self.storage_backend == "s3":
             missing = [
                 name for name, val in (

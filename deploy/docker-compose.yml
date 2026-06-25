@@ -24,6 +24,7 @@ name: peops-backend
 services:
   postgres:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-peops}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-peops}
@@ -38,6 +39,7 @@ services:
 
   redis:
     image: redis:7-alpine
+    restart: unless-stopped
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -47,6 +49,7 @@ services:
 
   minio:
     image: minio/minio:latest
+    restart: unless-stopped
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-peopsadmin}
@@ -69,6 +72,7 @@ services:
       "
 
   api:
+    restart: unless-stopped
     build:
       context: ..
       dockerfile: Dockerfile
@@ -104,7 +108,9 @@ services:
       PEOPS_TELEMETRY_SIM_ENABLED: ${PEOPS_TELEMETRY_SIM_ENABLED:-0}
       PEOPS_GOOGLE_CLIENT_ID: ${PEOPS_GOOGLE_CLIENT_ID:-}
       PEOPS_GOOGLE_CLIENT_SECRET: ${PEOPS_GOOGLE_CLIENT_SECRET:-}
-      PEOPS_GOOGLE_REDIRECT_URI: ${PEOPS_GOOGLE_REDIRECT_URI:-http://localhost:5173/api/auth/google/callback}
+      # Empty by default so the callback derives from PEOPS_PUBLIC_ORIGIN
+      # (<origin>/api/auth/google/callback) — never a stale localhost host.
+      PEOPS_GOOGLE_REDIRECT_URI: ${PEOPS_GOOGLE_REDIRECT_URI:-}
       PEOPS_FAST_PIPELINE: ${PEOPS_FAST_PIPELINE:-0}
       PEOPS_PARETO_TRIALS: ${PEOPS_PARETO_TRIALS:-150}
       # 1 = adaptive D-scaled budget: per-model trials = clamp(10·D+10, 30,
@@ -123,6 +129,10 @@ services:
       retries: 12
 
   worker:
+    # A pipeline that aborts natively (e.g. a C-extension SIGABRT during model
+    # conversion) takes the worker process down; without a restart policy the
+    # whole async-job pipeline would stay frozen until manual intervention.
+    restart: unless-stopped
     build:
       context: ..
       dockerfile: Dockerfile
