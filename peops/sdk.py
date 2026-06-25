@@ -113,6 +113,8 @@ class PEOps:
         guarantee: bool = False,
         tau: float = 0.95,
         verbose: bool = True,
+        adaptive: bool = True,
+        early_stop: bool = False,
     ) -> OptimizationResult:
         """Optimize any ML model. No training data required.
 
@@ -204,11 +206,13 @@ class PEOps:
         pareto_result = None
         if n_pareto_trials > 0:
             if verbose:
-                print(f"[4/5] 3D Pareto Search ({n_pareto_trials} trials)...")
+                budget = "adaptive" if adaptive else "fixed"
+                print(f"[4/5] 2D Pareto Search ({budget}, up to {n_pareto_trials} trials)...")
                 print(f"      UOSA narrows search space → Optuna explores within it")
             pareto_result = _run_pareto(
                 ingestion.onnx_model, graph_info, profile,
                 input_spec, cal_info.probes, n_pareto_trials, seed, verbose,
+                adaptive=adaptive, early_stop=early_stop,
             )
 
         # Select best compressed model from Pareto results
@@ -294,9 +298,11 @@ def _resolve_input_spec(ingestion: IngestionResult) -> dict[str, list[int]]:
 
 def _run_pareto(
     model, graph_info, profile, input_spec, probes,
-    n_trials, seed, verbose,
+    n_trials, seed, verbose, adaptive=True, early_stop=False,
 ) -> ParetoResult | None:
-    """Run 3D Pareto search using DFCV as eval function (no labeled data)."""
+    """Run 2D (accuracy, size) Pareto search using DFCV as eval function (no
+    labeled data). ``n_trials`` is the ceiling; the adaptive budget scales the
+    actual trial count with the model's search dimensionality."""
     validator = CompressionValidator(n_probes=min(16, len(probes)), seed=seed)
     sample_input = probes[0] if probes else None
 
@@ -308,7 +314,8 @@ def _run_pareto(
             return 0.0
 
     try:
-        search = ParetoSearch(n_trials=n_trials, seed=seed, verbose=verbose)
+        search = ParetoSearch(n_trials=n_trials, seed=seed, verbose=verbose,
+                              adaptive=adaptive, early_stop=early_stop)
         return search.search(model, graph_info, profile, dfcv_eval, sample_input)
     except Exception:
         return None

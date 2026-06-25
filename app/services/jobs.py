@@ -188,6 +188,8 @@ def execute_pipeline(
         n_trials = 4 if settings.fast_pipeline else settings.pareto_trials
         n_probes = 8 if settings.fast_pipeline else settings.n_probes
         max_ops = 8 if settings.fast_pipeline else settings.max_compressible_ops
+        # Fast mode forces a fixed 4-trial budget (below any adaptive floor).
+        adaptive = (not settings.fast_pipeline) and settings.pareto_adaptive
 
         artifacts = run_pipeline(
             model_id=job.model_id,
@@ -208,6 +210,13 @@ def execute_pipeline(
             benchmark_samples=50 if settings.fast_pipeline else 200,
             guarantee_mode=settings.guarantee_mode,
             tau=settings.tau,
+            adaptive=adaptive,
+            trials_per_dim=settings.pareto_trials_per_dim,
+            startup_trials=settings.pareto_startup_trials,
+            min_trials=settings.pareto_min_trials,
+            early_stop=settings.pareto_early_stop,
+            hv_patience=settings.pareto_hv_patience,
+            hv_epsilon=settings.pareto_hv_epsilon,
         )
         _on_success(job, model_name, artifacts)
     except Exception as exc:  # noqa: BLE001 — job boundary

@@ -65,6 +65,13 @@ def run_pipeline(
     benchmark_samples: int = 200,
     guarantee_mode: bool = True,
     tau: float = 0.95,
+    adaptive: bool = True,
+    trials_per_dim: int = 10,
+    startup_trials: int = 10,
+    min_trials: int = 30,
+    early_stop: bool = False,
+    hv_patience: int = 20,
+    hv_epsilon: float = 1e-3,
 ) -> PipelineArtifacts:
     import onnx  # noqa: F401 — fail fast if the engine extra is missing
     from peops.core.calibration_generator import CalibrationGenerator
@@ -211,10 +218,19 @@ def run_pipeline(
 
     pareto_result = None
     if compressible:
-        emit("INFO", f"Initializing Optuna study — multi-objective "
-                     f"(accuracy ↑ / size ↓ / latency ↓), TPESampler(seed={seed})")
-        emit("INFO", f"Budget: {n_trials} trials · eval = DFCV quality score (data-free)")
-        search = ParetoSearch(n_trials=n_trials, seed=seed, verbose=False)
+        emit("INFO", f"Initializing Optuna study — deterministic 2D objective "
+                     f"(accuracy ↑ / size ↓; latency measured for reporting), "
+                     f"TPESampler(seed={seed})")
+        budget_desc = (f"adaptive (≈{trials_per_dim}·D + {startup_trials}, "
+                       f"{min_trials}–{n_trials})" if adaptive else f"fixed {n_trials}")
+        emit("INFO", f"Budget: {budget_desc} trials · eval = DFCV quality score (data-free)")
+        search = ParetoSearch(
+            n_trials=n_trials, seed=seed, verbose=False,
+            adaptive=adaptive, trials_per_dim=trials_per_dim,
+            startup_trials=startup_trials, min_trials=min_trials,
+            max_trials=n_trials, early_stop=early_stop,
+            hv_patience=hv_patience, hv_epsilon=hv_epsilon,
+        )
         try:
             pareto_result = search.search(
                 model, graph_info, profile, dfcv_eval, cal_info.probes[0] if cal_info.probes else None,
@@ -228,6 +244,10 @@ def run_pipeline(
 
     surrogate_metrics = None
     if pareto_result is not None:
+        emit("INFO", f"Search dimensionality D={pareto_result.effective_dim} "
+                     f"(~{pareto_result.complexity_bits:.1f} bits) → "
+                     f"{pareto_result.n_trials_completed} trials run"
+                     f"{' (early-stopped)' if pareto_result.stopped_early else ''}")
         emit("INFO", f"Baseline: Q={pareto_result.original_accuracy:.4f}, "
                      f"size={pareto_result.original_size / 1e6:.3f}MB, "
                      f"latency={pareto_result.original_latency_ms:.3f}ms")

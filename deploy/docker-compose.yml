@@ -107,6 +107,9 @@ services:
       PEOPS_GOOGLE_REDIRECT_URI: ${PEOPS_GOOGLE_REDIRECT_URI:-http://localhost:5173/api/auth/google/callback}
       PEOPS_FAST_PIPELINE: ${PEOPS_FAST_PIPELINE:-0}
       PEOPS_PARETO_TRIALS: ${PEOPS_PARETO_TRIALS:-150}
+      # 1 = adaptive D-scaled budget: per-model trials = clamp(10·D+10, 30,
+      # PARETO_TRIALS), i.e. DYNAMIC, not a static PARETO_TRIALS count. 0 = fixed.
+      PEOPS_PARETO_ADAPTIVE: ${PEOPS_PARETO_ADAPTIVE:-1}
       PEOPS_INLINE_JOBS: "0"
       PEOPS_LOG_JSON: "1"
     depends_on:

@@ -108,10 +108,25 @@ class Settings(BaseSettings):
 
     # --- real compression pipeline (peops) ---
     fast_pipeline: bool = False           # tiny model + few trials (tests/CI)
-    # 150: TPE saturates the small per-op search space (≤24 ops × quant levels)
-    # around 120–160 trials — diminishing returns past that, while keeping real
-    # uploads in the minutes range. Override with PEOPS_PARETO_TRIALS.
-    pareto_trials: int = 150              # Optuna trials per import (real mode)
+    # The Pareto search optimizes two DETERMINISTIC objectives (accuracy ↑,
+    # size ↓); latency is measured per trial for reporting but kept out of the
+    # TPE objective (its wall-clock noise otherwise fed back into the sampler and
+    # made results non-reproducible). With a deterministic objective the trial
+    # budget scales with each model's real search dimensionality D instead of a
+    # fixed guess: n = clamp(per_dim·D + startup, min, max). Empirically the
+    # frontier converges by ~140 trials even at D~24 and <10 for trivial models,
+    # so 150 stays the ceiling while simple models run far fewer trials.
+    pareto_adaptive: bool = True          # PEOPS_PARETO_ADAPTIVE=0 → fixed budget
+    pareto_trials: int = 150              # ceiling (also the fixed count if !adaptive)
+    pareto_trials_per_dim: int = 10       # trials added per live search dimension
+    pareto_startup_trials: int = 10       # constant budget term (TPE random startup)
+    pareto_min_trials: int = 30           # lower clamp on the adaptive budget
+    # HV-plateau early stop: OFF by default. The frontier shows long plateaus
+    # then unpredictable late jumps, so a plateau stop cannot preserve quality —
+    # the D-scaled budget is the reliable adaptive mechanism.
+    pareto_early_stop: bool = False
+    pareto_hv_patience: int = 20
+    pareto_hv_epsilon: float = 1e-3
     n_probes: int = 16                    # synthetic calibration probes
     max_compressible_ops: int = 24        # UOSA builds one ORT session per op — cap it
     job_timeout_sec: int = 900

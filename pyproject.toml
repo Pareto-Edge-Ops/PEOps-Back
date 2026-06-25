@@ -29,7 +29,7 @@ engine = [
     "onnx>=1.16.0",
     "onnxconverter-common>=1.14",
     "onnxruntime>=1.18.0",
-    "optuna>=3.6.0",
+    "optuna>=4.0.0",
     "scikit-learn>=1.5.0",
     "skl2onnx>=1.17.0",
     "torch>=2.4.0",
@@ -40,7 +40,7 @@ test-engine = [
     "onnx>=1.16.0",
     "onnxconverter-common>=1.14",
     "onnxruntime>=1.18.0",
-    "optuna>=3.6.0",
+    "optuna>=4.0.0",
     "scikit-learn>=1.5.0",
     "torch>=2.4.0",
 ]
