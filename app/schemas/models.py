@@ -25,6 +25,9 @@ class ModelListItem(BaseModel):
     status: ModelStatus
     bestAccuracy: float | None
     isDeployed: bool
+    # True for raw weights-only checkpoints (no executable graph): they skip
+    # Pareto/accuracy/latency/certificate. Drives the "no guarantee" label.
+    weightsOnly: bool = False
     description: str | None = None
     analysisRunId: str | None = None
 

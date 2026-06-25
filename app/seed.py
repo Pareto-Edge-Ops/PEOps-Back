@@ -20,27 +20,27 @@ from sqlmodel import Session, select
 from app.dbmodels import RecipeRow, SdkSnippetRow
 
 # Bump when snippets/recipes change — seeded DBs are upgraded in place.
-_DOCS_VERSION = "2"
+_DOCS_VERSION = "3"
 
 _SNIPPETS: dict[str, dict] = {
     "python": {
         "language": "python", "filename": "quickstart.py",
-        "code": '''# Install (local serving needs the [serve] extra)
+        "code": '''# Hosted inference needs no install. Option B (local serving) needs the extra:
 # pip install 'peops-sdk[serve]'
 
 from peops_sdk import LocalRunner, PeopsClient
 
-BASE_URL = "http://localhost:8080"        # your PEOps origin
+BASE_URL = "__PEOPS_ORIGIN__"              # the hosted PEOps service — nothing to run
 DEPLOYMENT_ID = "dep_..."                  # Deployments tab -> deployment id
 API_KEY = "peops_sk_live_..."              # shown once when the key is minted
 
-# Option A - hosted inference (telemetry recorded server-side)
+# Option A (recommended) - hosted inference: just call the API, no local setup.
 client = PeopsClient(BASE_URL, DEPLOYMENT_ID, API_KEY)
 out = client.infer({"input": [[0.1, 0.2, 0.3]]})
 print(out["latencyMs"], out["outputs"])
 
-# Option B - local serving: pulls the compressed artifact, runs it on YOUR
-# hardware, and ships telemetry (latency breakdown, system snapshots,
+# Option B (optional) - run the compressed model on YOUR hardware (edge/offline);
+# pulls the artifact and ships telemetry (latency breakdown, system snapshots,
 # input/output stats) back to this dashboard.
 runner = LocalRunner.from_deployment(BASE_URL, DEPLOYMENT_ID, API_KEY)
 result = runner.run(None)                  # None -> random valid probe
@@ -50,7 +50,7 @@ runner.close()''',
     "node": {
         "language": "node", "filename": "quickstart.ts",
         "code": '''// No npm package needed - the inference endpoint is plain HTTP.
-const BASE_URL = "http://localhost:8080";   // your PEOps origin
+const BASE_URL = "__PEOPS_ORIGIN__";         // the hosted PEOps service
 const DEPLOYMENT_ID = "dep_...";            // Deployments tab -> deployment id
 const API_KEY = "peops_sk_live_...";        // shown once at key creation
 
@@ -69,10 +69,11 @@ console.log(out.latencyMs, out.outputs);''',
     },
     "cli": {
         "language": "cli", "filename": "quickstart.sh",
-        "code": '''# Install the SDK + CLI
+        "code": '''# The peops CLI is the OPTIONAL local/edge path (run the compressed model on
+# your own hardware). Hosted inference needs no install — see the Python/cURL tabs.
 pipx install 'peops-sdk[serve]'    # or: pip install 'peops-sdk[serve]'
 
-export PEOPS_BASE_URL=http://localhost:8080
+export PEOPS_BASE_URL=__PEOPS_ORIGIN__
 export PEOPS_DEPLOYMENT_ID=dep_...
 export PEOPS_API_KEY=peops_sk_live_...
 

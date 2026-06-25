@@ -53,6 +53,7 @@ def test_keras_h5_runs_full_pipeline(client, keras_h5):
     m = client.get(f"/api/models/{mid}").json()
     assert m["format"] == "TensorFlow"
     assert m["bestAccuracy"] is not None and m["bestAccuracy"] > 0  # measured!
+    assert m["weightsOnly"] is False              # executable graph → full guarantee
 
     par = client.get(f"/api/models/{mid}/pareto")
     assert par.status_code == 200 and par.json()["trials"]
@@ -85,6 +86,7 @@ def test_safetensors_weight_only(client):
     m = client.get(f"/api/models/{mid}").json()
     assert m["format"] == "SafeTensors"
     assert m["bestAccuracy"] is None              # unmeasurable — never invented
+    assert m["weightsOnly"] is True               # no graph → no guarantee chip
 
     arch = client.get(f"/api/models/{mid}/architecture").json()
     names = {n["name"] for n in arch["nodes"]}
@@ -163,3 +165,38 @@ def test_weights_only_h5_falls_back_honestly(client, tmp_path):
     assert conv["params"] == 3 * 3 * 3 * 8 + 8     # real shapes
     pr = client.get(f"/api/models/{mid}/pareto")
     assert pr.json()["detail"]["code"] == "weights_only_checkpoint"
+
+
+def test_transformer_onnx_warns_about_fidelity_scope(client):
+    """A graph with an attention pattern (MatMul→Softmax→MatMul) is detected as a
+    Transformer; even though it runs the FULL pipeline, the run log must warn
+    that the guarantee is probe-fidelity — NOT task accuracy/perplexity."""
+    import numpy as np
+    from onnx import TensorProto, helper, numpy_helper
+
+    wq = numpy_helper.from_array(np.random.randn(8, 8).astype(np.float32), "Wq")
+    wv = numpy_helper.from_array(np.random.randn(8, 4).astype(np.float32), "Wv")
+    nodes = [
+        helper.make_node("MatMul", ["X", "Wq"], ["scores"]),
+        helper.make_node("Softmax", ["scores"], ["probs"], axis=-1),
+        helper.make_node("MatMul", ["probs", "Wv"], ["Y"]),
+    ]
+    graph = helper.make_graph(
+        nodes, "mini-attn",
+        [helper.make_tensor_value_info("X", TensorProto.FLOAT, [1, 8])],
+        [helper.make_tensor_value_info("Y", TensorProto.FLOAT, [1, 4])],
+        [wq, wv],
+    )
+    model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+
+    body = _upload(client, "mini-attn.onnx", model.SerializeToString())
+    assert body["status"] == "completed", body["error"]
+    mid = body["modelId"]
+    assert client.get(f"/api/models/{mid}").json()["weightsOnly"] is False
+
+    logs = client.get(
+        f"/api/models/{mid}/ingestion/{body['runId']}/logs"
+    ).json()["logs"]
+    joined = "\n".join(e["message"] for e in logs)
+    assert "Detected architecture: Transformer" in joined
+    assert "NOT task accuracy/perplexity" in joined   # the honest LLM caveat

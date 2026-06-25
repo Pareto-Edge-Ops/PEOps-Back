@@ -28,6 +28,7 @@ def model_row_to_item(row: ModelRow) -> ModelListItem:
         status=row.status,  # type: ignore[arg-type]
         bestAccuracy=row.best_accuracy,
         isDeployed=row.is_deployed,
+        weightsOnly=row.weights_only,
         description=row.description,
         analysisRunId=row.analysis_run_id,
     )

@@ -142,6 +142,14 @@ def run_pipeline(
     emit("INFO", f"Detected architecture: {report.architecture.value} "
                  f"(confidence {report.confidence:.0%})")
     emit("INFO", f"Pattern: {report.architecture_pattern}")
+    if report.architecture.value == "Transformer":
+        # Be explicit that a Transformer/LLM's certificate is NOT a task-performance
+        # guarantee: probes are float tensors (not token IDs), fidelity is output
+        # similarity (not perplexity/accuracy), and no LLM-specific compression runs.
+        emit("WARN", "Transformer detected — calibration probes are float tensors, "
+                     "not token IDs; the fidelity guarantee is output similarity on "
+                     "synthetic probes, NOT task accuracy/perplexity, and no "
+                     "LLM-specific compression (e.g. GPTQ/AWQ) is applied.")
 
     compressible = graph_info.compressible_operators
     if len(compressible) > max_compressible_ops:

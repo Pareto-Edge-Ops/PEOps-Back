@@ -105,6 +105,7 @@ def create_app() -> FastAPI:
         deployments,
         infer,
         ingestion,
+        meta,
         models,
         pareto,
         sdk,
@@ -114,6 +115,8 @@ def create_app() -> FastAPI:
     api = APIRouter(prefix="/api")
     # Public — issues/clears the session cookie.
     api.include_router(auth.router)
+    # Public — static capability matrix the upload/marketing UI reads pre-login.
+    api.include_router(meta.router)
     # Public — the served inference endpoint authenticates with a deployment
     # API key (Authorization: Bearer …), NOT the browser session cookie. This
     # is the real-user traffic path; it must sit outside the cookie gate.
