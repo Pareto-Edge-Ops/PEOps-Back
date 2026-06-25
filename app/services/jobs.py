@@ -91,6 +91,16 @@ def execute_pipeline(
                 s.add(dash)
             s.commit()
 
+    # Worker has picked the job up — flip the dashboard run queued → running so
+    # the UI reflects real execution (the row was created "queued" at enqueue
+    # time). Only advance from "queued" so a cancel/fail race isn't overwritten.
+    with open_session() as s:
+        dash = s.get(RunRow, f"run_{job.run_id}")
+        if dash and dash.status == "queued":
+            dash.status = "running"
+            s.add(dash)
+            s.commit()
+
     # Per-job local scratch: the engine reads/writes files here, decoupled
     # from where source/artifact actually live (local dir or object store).
     work = Path(settings.work_dir) / job.run_id
@@ -354,7 +364,11 @@ def _on_failure(job: JobCtx, model_name: str, error: str) -> None:
             dash.status = "failed"
             s.add(dash)
         model = s.get(ModelRow, job.model_id)
-        if model:
+        # Defense-in-depth: a deployed model never enters the pipeline today
+        # (only uploads enqueue it, and there is no re-optimize path), so this
+        # guard is currently unreachable — but it keeps "deployed" provably
+        # immune to a silent → "failed" flip if re-optimization is ever added.
+        if model and model.status != "deployed":
             model.status = "failed"
             model.analysis_run_id = None
             s.add(model)

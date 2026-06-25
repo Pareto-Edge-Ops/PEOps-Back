@@ -3,17 +3,45 @@
 from __future__ import annotations
 
 import json
+import logging
+from datetime import datetime, timezone
 
 from sqlmodel import Session, select
 
-from app.dbmodels import ModelRow, ResultCacheRow
+from app.config import iso
+from app.dbmodels import IngestionRunRow, ModelRow, ResultCacheRow
 from app.schemas.models import ModelListItem
+
+log = logging.getLogger("peops")
 
 # Whitelisted sort keys: frontend camelCase → ModelListItem attribute.
 _SORT_KEYS = {
     "name", "typeFull", "typeShort", "format", "lastLearnedAt",
     "lastOptimizedAt", "status", "bestAccuracy", "isDeployed", "id",
 }
+
+
+def reconcile_deploy_status(session: Session) -> list[str]:
+    """Self-heal the deploy badge invariant: a model with a live deployment
+    (``is_deployed``) must read "deployed" in the AI Models list, which renders
+    from ``status``. Rows written before the deploy→"deployed" transition fix can
+    be stuck at "draft"; flip those to "deployed".
+
+    Deliberately narrow — ONLY ``status == "draft"`` is touched, so an in-flight
+    re-analysis ("analyzing"/"optimizing") or a "failed" model is never
+    clobbered, and an already-"deployed" row is left untouched. Idempotent
+    (no-op once aligned). Returns the names flipped (for logging + tests); the
+    caller decides how to surface errors.
+    """
+    flipped: list[str] = []
+    for m in session.exec(select(ModelRow)).all():
+        if m.is_deployed and m.status == "draft":
+            m.status = "deployed"
+            session.add(m)
+            flipped.append(m.name)
+    if flipped:
+        session.commit()
+    return flipped
 
 
 def model_row_to_item(row: ModelRow) -> ModelListItem:

@@ -8,6 +8,7 @@ drift monitor fills them from real inference_events.
 
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime, timezone
 
@@ -30,7 +31,30 @@ from app.services.inference import is_executable
 
 router = APIRouter(tags=["deployments"])
 
-_DEFAULT_REGION = "ap-northeast-2"
+# Endpoints are served locally by onnxruntime with the CPU execution provider
+# (see app/services/inference.py), not in a cloud region — so we label the
+# deployment with its real serving runtime instead of a fictional AWS region.
+_SERVING_RUNTIME = "ONNX Runtime (CPU)"
+# Legacy rows / older demo seeds stored a fake AWS-style region (e.g.
+# "ap-northeast-2"); detect those so the list view shows the real runtime.
+_CLOUD_REGION_RE = re.compile(r"^[a-z]{2}-[a-z]+-\d+$")
+
+
+def _runtime_label(stored: str | None) -> str:
+    """Display label for where a deployment runs. Empty or cloud-region-looking
+    values are treated as legacy and replaced with the real serving runtime."""
+    if stored and not _CLOUD_REGION_RE.match(stored):
+        return stored
+    return _SERVING_RUNTIME
+
+
+def _clean_name(name: str, stored_region: str | None) -> str:
+    """Strip the legacy ' · <cloud-region>' suffix old rows baked into the name."""
+    if stored_region and _CLOUD_REGION_RE.match(stored_region):
+        suffix = f" · {stored_region}"
+        if name.endswith(suffix):
+            return name[: -len(suffix)] or name
+    return name
 
 
 def _now() -> str:
@@ -66,9 +90,9 @@ def _key_prefix(session: Session, deployment_id: str) -> str | None:
 def _to_item(session: Session, dep: DeploymentRow) -> DeploymentItem:
     return DeploymentItem(
         id=dep.id,
-        name=dep.name or dep.id,
+        name=_clean_name(dep.name or dep.id, dep.region),
         endpoint=dep.endpoint,
-        region=dep.region,
+        region=_runtime_label(dep.region),
         status=dep.status,  # type: ignore[arg-type]
         qps=dep.qps,
         p95=dep.p95,
@@ -113,14 +137,16 @@ def create_deployment(
 
     dep_id = f"dep_{uuid.uuid4().hex[:10]}"
     now = _now()
-    region = (body.region or _DEFAULT_REGION).strip()
+    # `region` is an optional free-form serving-target override; default to the
+    # real runtime rather than a fictional cloud region.
+    runtime = (body.region or _SERVING_RUNTIME).strip()
     dep = DeploymentRow(
         id=dep_id,
         user_id=current_user.id,
         model_id=model_id,
-        name=body.name or f"{model.name} · {region}",
+        name=body.name or model.name,
         endpoint=f"{_base_url(request)}/api/v1/infer/{dep_id}",
-        region=region,
+        region=runtime,
         qps=0.0, p95=0.0, errors_pct=0.0, accuracy_drift=0.0,
         status=body.status,
         created_at=now,
@@ -128,10 +154,14 @@ def create_deployment(
     )
     session.add(dep)
     model.is_deployed = True
+    # Surface the deploy in the model's lifecycle status too, so the AI Models
+    # list shows the green "Deployed" badge — not the stale "draft". `is_deployed`
+    # alone never drove the badge (the list renders from `status`).
+    model.status = "deployed"
     session.add(model)
     session.add(ActivityRow(
         id=f"act_dep_{dep_id}", user_id=current_user.id, kind="deploy_promoted",
-        text=f"Deployment promoted — {model.name} → {region}", timestamp=now,
+        text=f"Deployment promoted — {model.name} → {_runtime_label(runtime)}", timestamp=now,
     ))
     session.commit()
 
@@ -200,6 +230,12 @@ def delete_deployment(
         model = session.get(ModelRow, model_id)
         if model is not None:
             model.is_deployed = False
+            # Mirror of create_deployment: undeploying returns the model to its
+            # ready-to-deploy "draft" state (the compressed artifact still exists).
+            # Guarded so a re-optimization mid-flight (analyzing/optimizing) or a
+            # failed model isn't clobbered.
+            if model.status == "deployed":
+                model.status = "draft"
             session.add(model)
             session.commit()
     return {"ok": True}

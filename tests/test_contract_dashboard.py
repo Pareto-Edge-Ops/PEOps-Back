@@ -71,6 +71,33 @@ def test_runs_reflect_real_pipeline(client, real_model):
     assert all(r["status"] == "done" for r in done)
 
 
+def test_run_enqueued_shows_queued(client, monkeypatch):
+    """A freshly enqueued run is honestly "queued" until a worker picks it up.
+
+    Patch the inline executor to a no-op so the job never runs, then assert the
+    dashboard surfaces the run under the "queued" filter (this tab/KPI branch was
+    dead before — runs were created "running" the instant they existed). The
+    worker normally flips queued → running when it starts processing.
+    """
+    import app.services.queue as queue_mod
+
+    monkeypatch.setattr(queue_mod, "_run_inline", lambda payload: None)
+    body = client.post(
+        "/api/models/import", json={"fileName": "queued-probe.onnx"}
+    ).json()
+    run_id = f"run_{body['runId']}"
+    try:
+        queued = client.get("/api/dashboard/runs", params={"status": "queued"}).json()
+        assert any(r["id"] == run_id for r in queued), [r["id"] for r in queued]
+        assert all(r["status"] == "queued" for r in queued)
+        # And it must NOT yet appear as running.
+        running = client.get("/api/dashboard/runs", params={"status": "running"}).json()
+        assert all(r["id"] != run_id for r in running)
+    finally:
+        # Don't leak this never-executed model into other session-scoped tests.
+        client.delete(f"/api/models/{body['modelId']}")
+
+
 def test_compression_map_real_model(client, real_model):
     cmap = client.get("/api/dashboard/compression-map").json()
     # the real pipeline produced one optimized model with recorded provenance

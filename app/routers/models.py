@@ -109,8 +109,12 @@ async def _start_ingestion(
     ))
     n_trials = 4 if settings.fast_pipeline else settings.pareto_trials
     session.add(RunRow(
+        # Honest initial state: the job is enqueued, not yet picked up. The worker
+        # flips this to "running" when it actually starts processing (see
+        # jobs.py). This makes the dashboard "Queued" tab + activeRuns KPI real
+        # instead of every run appearing "running" the instant it's created.
         id=f"run_{run_id}", user_id=user_id, model_id=model_id, name=display_name(file_name),
-        status="running", progress_pct=0, iter=f"0 / {n_trials}",
+        status="queued", progress_pct=0, iter=f"0 / {n_trials}",
         best_acc=0, delta_acc=0, created_at=now,
     ))
     session.add(ActivityRow(

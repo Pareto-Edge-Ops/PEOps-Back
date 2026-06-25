@@ -18,9 +18,12 @@ def test_deploy_mints_endpoint_and_key(make_live_model, deploy_model, client):
     assert key.startswith("peops_sk_live_")
     assert "…" in dep["keyPrefix"] and key not in dep["keyPrefix"]
 
-    # The model flips to deployed.
+    # The model flips to deployed — both the boolean flag AND the lifecycle
+    # status (the AI Models list renders its badge from `status`, so the green
+    # "Deployed" badge only appears when status itself flips).
     m = client.get(f"/api/models/{mid}").json()
     assert m["isDeployed"] is True
+    assert m["status"] == "deployed"
 
     # It shows up in the management list and the telemetry deployments widget.
     listed = client.get(f"/api/models/{mid}/deployments").json()
@@ -51,6 +54,23 @@ def test_delete_clears_deployed_flag(make_live_model, deploy_model, client):
     assert client.get(f"/api/models/{mid}/deployments").json() == []
     m = client.get(f"/api/models/{mid}").json()
     assert m["isDeployed"] is False
+    # Undeploying the last deployment returns the model to its ready-to-deploy
+    # "draft" status (the compressed artifact still exists) — not stuck "deployed".
+    assert m["status"] == "draft"
+
+
+def test_pause_keeps_model_deployed(make_live_model, deploy_model, client):
+    """Pausing a deployment doesn't undeploy the model — it still HAS a
+    deployment, so the AI Models badge stays "deployed". Only deleting the last
+    deployment reverts it."""
+    mid = make_live_model("deploy-d.onnx")["modelId"]
+    dep_id, _ = deploy_model(mid)
+    assert client.get(f"/api/models/{mid}").json()["status"] == "deployed"
+
+    assert client.post(f"/api/deployments/{dep_id}/pause").json()["status"] == "paused"
+    m = client.get(f"/api/models/{mid}").json()
+    assert m["status"] == "deployed"
+    assert m["isDeployed"] is True
 
 
 def test_deploy_unknown_model_404(client):
