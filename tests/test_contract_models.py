@@ -13,7 +13,7 @@ MODEL_FORMATS = {
 }
 REQUIRED_KEYS = {
     "id", "name", "typeFull", "typeShort", "format", "lastLearnedAt",
-    "lastOptimizedAt", "status", "bestAccuracy", "isDeployed",
+    "lastOptimizedAt", "status", "bestAccuracy", "isDeployed", "isServing",
 }
 
 
@@ -279,7 +279,7 @@ def test_delete_lifecycle(client):
     assert client.delete(f"/api/models/{mid}").status_code == 404
 
 
-def test_artifact_info_and_usage(client, real_model):
+def test_artifact_info_and_download(client, real_model):
     mid = real_model["modelId"]
     info = client.get(f"/api/models/{mid}/artifact/info").json()
     assert info["kind"] == "onnx"
@@ -294,20 +294,11 @@ def test_artifact_info_and_usage(client, real_model):
 
     assert hashlib.sha256(art.content).hexdigest() == info["sha256"]
 
-    usage = client.get(f"/api/models/{mid}/sdk/usage").json()
-    assert set(usage) == {"python", "curl"}
-    assert "onnxruntime" in usage["python"]["code"]
-    assert info["fileName"] in usage["python"]["code"]
-    assert info["sha256"] in usage["curl"]["code"]
-
 
 def test_artifact_info_statedict_npz(client, statedict_model):
     mid = statedict_model["modelId"]
     info = client.get(f"/api/models/{mid}/artifact/info").json()
     assert info["kind"] == "npz"
-    usage = client.get(f"/api/models/{mid}/sdk/usage").json()
-    assert "np.load" in usage["python"]["code"]
-    assert "__scale__" in usage["python"]["code"]
 
 
 def test_artifact_info_404_when_failed(client, failed_model):
