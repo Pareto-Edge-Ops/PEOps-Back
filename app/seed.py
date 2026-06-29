@@ -20,79 +20,75 @@ from sqlmodel import Session, select
 from app.dbmodels import RecipeRow, SdkSnippetRow
 
 # Bump when snippets/recipes change — seeded DBs are upgraded in place.
-_DOCS_VERSION = "3"
+_DOCS_VERSION = "5"
 
+# Copy-paste "deploy the compressed model on YOUR server" guide. Every snippet
+# self-hosts a `POST /infer` endpoint on the user's own hardware (not a call to
+# the hosted API), using only APIs that exist: the peops-sdk LocalRunner / `peops
+# serve` CLI, and onnxruntime-node for the Node path.
 _SNIPPETS: dict[str, dict] = {
     "python": {
-        "language": "python", "filename": "quickstart.py",
-        "code": '''# Hosted inference needs no install. Option B (local serving) needs the extra:
-# pip install 'peops-sdk[serve]'
+        "language": "python", "filename": "serve.py",
+        "code": '''# Serve the compressed model as an HTTP endpoint on your own server.
+# pip install 'peops-sdk[serve]' fastapi uvicorn
+from fastapi import FastAPI
+from peops_sdk import LocalRunner
 
-from peops_sdk import LocalRunner, PeopsClient
+BASE_URL = "__PEOPS_ORIGIN__"
+DEPLOYMENT_ID = "dep_..."                 # Deployments tab -> deployment id
+API_KEY = "peops_sk_live_..."            # shown once when the key is minted
 
-BASE_URL = "__PEOPS_ORIGIN__"              # the hosted PEOps service — nothing to run
-DEPLOYMENT_ID = "dep_..."                  # Deployments tab -> deployment id
-API_KEY = "peops_sk_live_..."              # shown once when the key is minted
-
-# Option A (recommended) - hosted inference: just call the API, no local setup.
-client = PeopsClient(BASE_URL, DEPLOYMENT_ID, API_KEY)
-out = client.infer({"input": [[0.1, 0.2, 0.3]]})
-print(out["latencyMs"], out["outputs"])
-
-# Option B (optional) - run the compressed model on YOUR hardware (edge/offline);
-# pulls the artifact and ships telemetry (latency breakdown, system snapshots,
-# input/output stats) back to this dashboard.
+# Pulls + caches the compressed artifact, runs onnxruntime locally, and ships
+# latency / system / drift telemetry back to this dashboard.
 runner = LocalRunner.from_deployment(BASE_URL, DEPLOYMENT_ID, API_KEY)
-result = runner.run(None)                  # None -> random valid probe
-print(result["latencyMs"], result["outputs"])
-runner.close()''',
+
+app = FastAPI()
+
+@app.post("/infer")
+def infer(payload: dict):
+    out = runner.run(payload.get("inputs"))   # {"inputs": null} -> random probe
+    return {"latencyMs": out["latencyMs"], "outputs": out["outputs"]}
+
+# Run it:  uvicorn serve:app --host 0.0.0.0 --port 8765
+# Zero-code alternative:  peops serve --port 8765   (see the CLI tab)''',
     },
     "node": {
-        "language": "node", "filename": "quickstart.ts",
-        "code": '''// No npm package needed - the inference endpoint is plain HTTP.
-const BASE_URL = "__PEOPS_ORIGIN__";         // the hosted PEOps service
-const DEPLOYMENT_ID = "dep_...";            // Deployments tab -> deployment id
-const API_KEY = "peops_sk_live_...";        // shown once at key creation
+        "language": "node", "filename": "serve.ts",
+        "code": '''// Self-host the compressed ONNX from a Node server (no Node SDK needed).
+// 1) get model.onnx: run `peops pull` (CLI tab) or the Download Artifact panel
+// 2) npm i express onnxruntime-node
+import express from "express";
+import * as ort from "onnxruntime-node";
 
-const res = await fetch(`${BASE_URL}/api/v1/infer/${DEPLOYMENT_ID}`, {
-  method: "POST",
-  headers: {
-    Authorization: `Bearer ${API_KEY}`,
-    "Content-Type": "application/json",
-  },
-  // inputs: { input_name: nested arrays }; null lets the server synthesize
-  // a valid random probe (handy for smoke tests).
-  body: JSON.stringify({ inputs: null, batch: 1 }),
+const session = await ort.InferenceSession.create("model.onnx");
+const app = express();
+app.use(express.json());
+
+app.post("/infer", async (req, res) => {
+  // body: { <input_name>: { data: number[], dims: number[] } } per model input
+  const feeds = Object.fromEntries(
+    Object.entries(req.body).map(([name, t]: any) =>
+      [name, new ort.Tensor("float32", Float32Array.from(t.data), t.dims)]),
+  );
+  const out = await session.run(feeds);
+  res.json(Object.fromEntries(
+    Object.entries(out).map(([name, t]) => [name, { dims: t.dims }])));
 });
-const out = await res.json();
-console.log(out.latencyMs, out.outputs);''',
+
+app.listen(8765, () => console.log("POST /infer live on http://localhost:8765"));''',
     },
     "cli": {
-        "language": "cli", "filename": "quickstart.sh",
-        "code": '''# The peops CLI is the OPTIONAL local/edge path (run the compressed model on
-# your own hardware). Hosted inference needs no install — see the Python/cURL tabs.
-pipx install 'peops-sdk[serve]'    # or: pip install 'peops-sdk[serve]'
+        "language": "cli", "filename": "serve.sh",
+        "code": '''# One command turns the compressed model into a live /infer endpoint.
+pip install 'peops-sdk[serve]'      # or: pipx install 'peops-sdk[serve]'
 
 export PEOPS_BASE_URL=__PEOPS_ORIGIN__
-export PEOPS_DEPLOYMENT_ID=dep_...
-export PEOPS_API_KEY=peops_sk_live_...
+export PEOPS_DEPLOYMENT_ID=dep_...         # Deployments tab -> deployment id
+export PEOPS_API_KEY=peops_sk_live_...     # shown once when the key is minted
 
-peops pull                          # download the compressed artifact
-peops bench -n 200                  # local p50/p95 benchmark (reports telemetry)
-peops serve --port 8765             # local HTTP endpoint: POST /infer''',
-    },
-    "curl": {
-        "language": "curl", "filename": "quickstart.sh",
-        "code": '''# One real inference against your deployment
-curl -s $PEOPS_BASE_URL/api/v1/infer/$PEOPS_DEPLOYMENT_ID \\
-  -H "Authorization: Bearer $PEOPS_API_KEY" \\
-  -H "Content-Type: application/json" \\
-  -d '{"inputs": null, "batch": 1}'
-
-# Pull the deployed (compressed) artifact with the same key
-curl -sL $PEOPS_BASE_URL/api/v1/artifacts/$PEOPS_DEPLOYMENT_ID \\
-  -H "Authorization: Bearer $PEOPS_API_KEY" \\
-  -o model.onnx''',
+peops pull                          # cache the compressed artifact
+peops serve --port 8765             # POST /infer now live at http://127.0.0.1:8765
+# Binds localhost — front it with your reverse proxy / container to expose it.''',
     },
 }
 
