@@ -9,10 +9,15 @@ from datetime import datetime, timezone
 from sqlmodel import Session, select
 
 from app.config import iso
-from app.dbmodels import IngestionRunRow, ModelRow, ResultCacheRow
+from app.dbmodels import DeploymentRow, IngestionRunRow, ModelRow, ResultCacheRow
 from app.schemas.models import ModelListItem
 
 log = logging.getLogger("peops")
+
+# Deployment statuses that actively route traffic. A model is "serving" iff it
+# has ≥1 deployment in one of these; an all-"paused" model is deployed but not
+# serving (drives the list badge's "Deployed · paused" state).
+_SERVING_STATUSES = ("live", "canary")
 
 # Whitelisted sort keys: frontend camelCase → ModelListItem attribute.
 _SORT_KEYS = {
@@ -87,7 +92,19 @@ def reconcile_orphaned_runs(session: Session, max_age_sec: int) -> list[str]:
     return reaped
 
 
-def model_row_to_item(row: ModelRow) -> ModelListItem:
+def model_is_serving(session: Session, model_id: str) -> bool:
+    """True iff the model has ≥1 deployment actively routing traffic
+    (live/canary). All-paused (or no) deployments → False. One bounded query."""
+    hit = session.exec(
+        select(DeploymentRow.id).where(
+            DeploymentRow.model_id == model_id,
+            DeploymentRow.status.in_(_SERVING_STATUSES),  # type: ignore[attr-defined]
+        )
+    ).first()
+    return hit is not None
+
+
+def model_row_to_item(row: ModelRow, *, serving: bool = False) -> ModelListItem:
     return ModelListItem(
         id=row.id,
         name=row.name,
@@ -99,6 +116,7 @@ def model_row_to_item(row: ModelRow) -> ModelListItem:
         status=row.status,  # type: ignore[arg-type]
         bestAccuracy=row.best_accuracy,
         isDeployed=row.is_deployed,
+        isServing=serving,
         weightsOnly=row.weights_only,
         description=row.description,
         analysisRunId=row.analysis_run_id,
@@ -113,7 +131,18 @@ def list_models(
     (models/api/mockHandlers.ts): name-substring filter, isDeployed filter,
     `key:dir` sort comparing values as strings with nulls last. Scoped to owner."""
     rows = session.exec(select(ModelRow).where(ModelRow.user_id == user_id)).all()
-    items = [model_row_to_item(r) for r in rows]
+    # One bounded query for every serving (live/canary) deployment the user owns,
+    # so each row's `isServing` is computed without an N+1 per-model lookup.
+    serving_ids = {
+        d.model_id
+        for d in session.exec(
+            select(DeploymentRow).where(
+                DeploymentRow.user_id == user_id,
+                DeploymentRow.status.in_(_SERVING_STATUSES),  # type: ignore[attr-defined]
+            )
+        ).all()
+    }
+    items = [model_row_to_item(r, serving=r.id in serving_ids) for r in rows]
 
     needle = (q or "").lower()
     if needle:

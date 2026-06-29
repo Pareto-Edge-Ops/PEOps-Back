@@ -25,7 +25,13 @@ from app.dbmodels import (
     ResultCacheRow,
     RunRow,
 )
-from app.repositories import get_cached_result, list_models, model_row_to_item, owned_model
+from app.repositories import (
+    get_cached_result,
+    list_models,
+    model_is_serving,
+    model_row_to_item,
+    owned_model,
+)
 from app.schemas.common import OkResponse
 from app.schemas.models import ImportRequest, ImportResponse, RenameRequest
 from app.services.cancel import request_cancel
@@ -68,7 +74,8 @@ def model_get(
     session: Session = Depends(get_session),
 ) -> JSONResponse:
     model = owned_model(session, model_id, current_user.id)
-    return JSONResponse(model_row_to_item(model).to_response())
+    serving = model_is_serving(session, model.id)
+    return JSONResponse(model_row_to_item(model, serving=serving).to_response())
 
 
 async def _start_ingestion(
@@ -265,7 +272,8 @@ def model_rename(
         run.name = name
         session.add(run)
     session.commit()
-    return JSONResponse(model_row_to_item(model).to_response())
+    serving = model_is_serving(session, model.id)
+    return JSONResponse(model_row_to_item(model, serving=serving).to_response())
 
 
 @router.delete("/{model_id}")

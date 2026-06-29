@@ -25,6 +25,12 @@ class ModelListItem(BaseModel):
     status: ModelStatus
     bestAccuracy: float | None
     isDeployed: bool
+    # True only when the model has ≥1 deployment actively routing traffic
+    # (live/canary). A model whose deployments are ALL paused stays
+    # `isDeployed=True` / `status="deployed"` (it still HAS a deployment) but
+    # `isServing=False` — the list badge uses this to render the honest
+    # "Deployed · paused" state instead of the green serving badge.
+    isServing: bool = False
     # True for raw weights-only checkpoints (no executable graph): they skip
     # Pareto/accuracy/latency/certificate. Drives the "no guarantee" label.
     weightsOnly: bool = False
