@@ -85,6 +85,69 @@ def test_deployed_reverts_only_when_last_deployment_deleted(make_live_model, dep
     assert m["status"] == "draft" and m["isDeployed"] is False
 
 
+def _list_item(client, mid: str) -> dict:
+    """The model's row in the list endpoint — the badge's real data source."""
+    return next(m for m in client.get("/api/models").json() if m["id"] == mid)
+
+
+def test_isserving_tracks_pause_resume_without_touching_status(
+    make_live_model, deploy_model, client,
+):
+    """`isServing` flips with pause/resume while `status` stays "deployed": the
+    model still HAS a deployment (status), it just isn't routing traffic
+    (isServing). Both the single-GET and the list endpoints agree — this is what
+    lets the badge read "Deployed · paused" without regressing the lifecycle."""
+    mid = make_live_model("serving-a.onnx")["modelId"]
+
+    # not deployed yet → not serving
+    before = client.get(f"/api/models/{mid}").json()
+    assert before["isDeployed"] is False and before["isServing"] is False
+
+    dep_id, _ = deploy_model(mid)
+    live = client.get(f"/api/models/{mid}").json()
+    assert live["status"] == "deployed" and live["isServing"] is True
+    assert _list_item(client, mid)["isServing"] is True
+
+    # pause → STILL deployed, but no longer serving (the fix)
+    assert client.post(f"/api/deployments/{dep_id}/pause").json()["status"] == "paused"
+    paused = client.get(f"/api/models/{mid}").json()
+    assert paused["status"] == "deployed" and paused["isDeployed"] is True
+    assert paused["isServing"] is False
+    assert _list_item(client, mid)["isServing"] is False
+
+    # resume → serving again
+    assert client.post(f"/api/deployments/{dep_id}/resume").json()["status"] == "live"
+    assert client.get(f"/api/models/{mid}").json()["isServing"] is True
+
+
+def test_isserving_true_when_any_deployment_live(make_live_model, deploy_model, client):
+    """With two deployments the model serves while ≥1 is live; pausing BOTH makes
+    it deployed-but-not-serving."""
+    mid = make_live_model("serving-b.onnx")["modelId"]
+    dep1, _ = deploy_model(mid)
+    dep2, _ = deploy_model(mid)
+
+    # pause one of two → still serving via the other
+    client.post(f"/api/deployments/{dep1}/pause")
+    m = client.get(f"/api/models/{mid}").json()
+    assert m["status"] == "deployed" and m["isServing"] is True
+
+    # pause the last live one → deployed, not serving
+    client.post(f"/api/deployments/{dep2}/pause")
+    m = client.get(f"/api/models/{mid}").json()
+    assert m["status"] == "deployed" and m["isDeployed"] is True
+    assert m["isServing"] is False
+
+
+def test_canary_counts_as_serving(make_live_model, client):
+    """A canary deployment routes (a fraction of) traffic → isServing True."""
+    mid = make_live_model("serving-c.onnx")["modelId"]
+    r = client.post(f"/api/models/{mid}/deployments", json={"status": "canary"})
+    assert r.status_code == 200, r.text
+    assert r.json()["deployment"]["status"] == "canary"
+    assert client.get(f"/api/models/{mid}").json()["isServing"] is True
+
+
 def test_weights_only_model_cannot_deploy(statedict_model, client):
     """A weights-only (.npz) model has no executable artifact → deploy is
     rejected (409 not_servable) and the model stays "draft": it can be
