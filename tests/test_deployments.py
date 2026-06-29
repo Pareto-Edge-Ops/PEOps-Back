@@ -73,10 +73,62 @@ def test_pause_keeps_model_deployed(make_live_model, deploy_model, client):
     assert m["isDeployed"] is True
 
 
+def test_update_deployment_metadata(make_live_model, deploy_model, client):
+    """PATCH sets a custom name + description and they persist on the list."""
+    mid = make_live_model("deploy-e.onnx")["modelId"]
+    dep_id, _ = deploy_model(mid)
+
+    # Defaults: name comes from the model, description is empty.
+    before = client.get(f"/api/models/{mid}/deployments").json()[0]
+    assert before["description"] == ""
+
+    r = client.patch(
+        f"/api/deployments/{dep_id}",
+        json={"name": "EU GPU box", "description": "Seoul region prod mirror"},
+    )
+    assert r.status_code == 200, r.text
+    updated = r.json()
+    assert updated["name"] == "EU GPU box"
+    assert updated["description"] == "Seoul region prod mirror"
+
+    listed = client.get(f"/api/models/{mid}/deployments").json()[0]
+    assert listed["name"] == "EU GPU box"
+    assert listed["description"] == "Seoul region prod mirror"
+
+
+def test_update_partial_keeps_other_fields(make_live_model, deploy_model, client):
+    """An omitted field is left untouched; description can be cleared to ''."""
+    mid = make_live_model("deploy-f.onnx")["modelId"]
+    dep_id, _ = deploy_model(mid)
+    client.patch(f"/api/deployments/{dep_id}", json={"name": "alpha", "description": "note"})
+
+    # Update only the description — name stays.
+    r = client.patch(f"/api/deployments/{dep_id}", json={"description": "new note"})
+    assert r.json()["name"] == "alpha"
+    assert r.json()["description"] == "new note"
+
+    # Clearing the description is allowed.
+    r = client.patch(f"/api/deployments/{dep_id}", json={"description": ""})
+    assert r.json()["name"] == "alpha"
+    assert r.json()["description"] == ""
+
+
+def test_update_empty_name_ignored(make_live_model, deploy_model, client):
+    """A blank name is ignored so the deployment never loses its label."""
+    mid = make_live_model("deploy-g.onnx")["modelId"]
+    dep_id, _ = deploy_model(mid)
+    original = client.get(f"/api/models/{mid}/deployments").json()[0]["name"]
+
+    r = client.patch(f"/api/deployments/{dep_id}", json={"name": "   "})
+    assert r.status_code == 200
+    assert r.json()["name"] == original
+
+
 def test_deploy_unknown_model_404(client):
     assert client.post("/api/models/m_missing/deployments", json={}).status_code == 404
 
 
 def test_manage_unknown_deployment_404(client):
     assert client.post("/api/deployments/dep_missing/pause").status_code == 404
+    assert client.patch("/api/deployments/dep_missing", json={"name": "x"}).status_code == 404
     assert client.delete("/api/deployments/dep_missing").status_code == 404
