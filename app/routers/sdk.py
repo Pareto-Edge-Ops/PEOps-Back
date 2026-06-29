@@ -3,7 +3,8 @@
 API keys / webhooks endpoints were removed: this is a local tool with no auth
 or delivery infrastructure, and serving empty husks for them added nothing.
 The SDK Hub now centers on the REAL compressed artifact
-(`/api/models/{id}/artifact/info` + `/api/models/{id}/sdk/usage`).
+(`/api/models/{id}/artifact/info` for metadata + `/api/models/{id}/artifact`
+for the download).
 """
 
 from __future__ import annotations

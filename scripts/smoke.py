@@ -137,17 +137,13 @@ def main() -> int:
         check("compressed artifact", lambda: c.get(
             f"/api/models/{model_id}/artifact").raise_for_status())
 
-        def _artifact_info_and_usage():
+        def _artifact_info():
             info = c.get(f"/api/models/{model_id}/artifact/info").raise_for_status().json()
             assert info["sizeBytes"] > 0 and len(info["sha256"]) == 64
             assert info["kind"] in ("onnx", "npz")
-            usage = c.get(f"/api/models/{model_id}/sdk/usage").raise_for_status().json()
-            assert set(usage) == {"python", "curl"}
-            assert info["fileName"] in usage["python"]["code"]
-            assert info["sha256"] in usage["curl"]["code"]
             return True
 
-        check("artifact info + runnable usage", _artifact_info_and_usage)
+        check("artifact info", _artifact_info)
 
         # Telemetry — REAL benchmark measurements for this model
         check("telemetry kpi (real benchmark)", lambda: TelemetryKpi.model_validate(
