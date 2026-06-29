@@ -6,7 +6,8 @@ from __future__ import annotations
 def test_snippets_is_object_keyed_by_language(client):
     snippets = client.get("/api/sdk/snippets").json()
     assert isinstance(snippets, dict)  # zod Record — NOT an array
-    assert set(snippets) == {"python", "node", "cli", "curl"}
+    # Self-host guide: only the tabs that actually stand up a server.
+    assert set(snippets) == {"python", "node", "cli"}
     for lang, snip in snippets.items():
         assert snip["language"] == lang
         assert set(snip) == {"language", "filename", "code"}
@@ -14,12 +15,13 @@ def test_snippets_is_object_keyed_by_language(client):
 
 
 def test_snippets_reference_only_real_apis(client):
-    """Docs honesty: every snippet targets APIs that actually exist."""
+    """Docs honesty: every snippet targets APIs/commands that actually exist."""
     snippets = client.get("/api/sdk/snippets").json()
     all_code = "\n".join(s["code"] for s in snippets.values())
-    # The real package/endpoints appear...
+    # The real package / CLI / SDK class appear (the card is a self-host guide)...
     assert "peops-sdk" in all_code
-    assert "/api/v1/infer/" in all_code
+    assert "peops serve" in all_code            # real CLI command (cli.py)
+    assert "LocalRunner" in all_code            # real SDK serving class (runner.py)
     # ...and the old fictional APIs never do.
     assert "pip install peops\n" not in all_code
     assert "brew install peops" not in all_code
