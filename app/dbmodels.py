@@ -109,6 +109,9 @@ class DeploymentRow(SQLModel, table=True):
     user_id: str = Field(default="", index=True)
     model_id: str = Field(default="", index=True)
     name: str = ""
+    # User-editable note describing what this endpoint is for (which server,
+    # which environment, …). Free text, empty when unset.
+    description: str = ""
     endpoint: str
     region: str
     # Live metrics — maintained by the drift monitor from a rolling window of

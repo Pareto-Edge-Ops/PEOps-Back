@@ -25,11 +25,16 @@ from app.schemas.deployments import (
     CreateDeploymentRequest,
     DeploymentItem,
     RotatedKey,
+    UpdateDeploymentRequest,
 )
 from app.services import apikeys
 from app.services.inference import is_executable
 
 router = APIRouter(tags=["deployments"])
+
+# Bounds on the user-editable label fields (mirrors the frontend input limits).
+_MAX_NAME = 80
+_MAX_DESC = 280
 
 # Endpoints are served locally by onnxruntime with the CPU execution provider
 # (see app/services/inference.py), not in a cloud region — so we label the
@@ -91,6 +96,7 @@ def _to_item(session: Session, dep: DeploymentRow) -> DeploymentItem:
     return DeploymentItem(
         id=dep.id,
         name=_clean_name(dep.name or dep.id, dep.region),
+        description=dep.description,
         endpoint=dep.endpoint,
         region=_runtime_label(dep.region),
         status=dep.status,  # type: ignore[arg-type]
@@ -206,6 +212,26 @@ def resume_deployment(
 ) -> DeploymentItem:
     dep = _owned_deployment(session, deployment_id, current_user.id)
     dep.status = "live"
+    session.add(dep)
+    session.commit()
+    return _to_item(session, dep)
+
+
+@router.patch("/deployments/{deployment_id}")
+def update_deployment(
+    deployment_id: str,
+    body: UpdateDeploymentRequest,
+    current_user: CurrentUser,
+    session: Session = Depends(get_session),
+) -> DeploymentItem:
+    """Rename a deployment and/or set its description (partial update)."""
+    dep = _owned_deployment(session, deployment_id, current_user.id)
+    if body.name is not None:
+        name = body.name.strip()[:_MAX_NAME]
+        if name:  # ignore a blank name — keep the existing one
+            dep.name = name
+    if body.description is not None:
+        dep.description = body.description.strip()[:_MAX_DESC]  # may clear to ""
     session.add(dep)
     session.commit()
     return _to_item(session, dep)

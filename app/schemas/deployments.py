@@ -13,9 +13,17 @@ class CreateDeploymentRequest(BaseModel):
     status: Literal["live", "canary"] = "live"
 
 
+class UpdateDeploymentRequest(BaseModel):
+    """Partial update — an omitted (None) field is left untouched."""
+
+    name: str | None = None
+    description: str | None = None
+
+
 class DeploymentItem(BaseModel):
     id: str
     name: str
+    description: str = ""
     endpoint: str
     region: str
     status: Literal["live", "canary", "paused"]
