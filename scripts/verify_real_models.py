@@ -21,7 +21,7 @@ from pathlib import Path
 
 import httpx
 
-MODELS_DIR = Path("/Users/kwonminjae/Desktop/PEOps/test-models")
+MODELS_DIR = Path("/Users/kwonminjae/Desktop/Astra/test-models")
 
 
 def main() -> None:
@@ -32,7 +32,7 @@ def main() -> None:
     args = ap.parse_args()
 
     c = httpx.Client(base_url=args.base.rstrip("/"), timeout=120.0)
-    email = f"realgate+{uuid.uuid4().hex[:8]}@peops.dev"
+    email = f"realgate+{uuid.uuid4().hex[:8]}@astra.dev"
     c.post("/api/auth/signup", json={
         "email": email, "password": "real-gate-pass-1234", "name": "RealGate",
     }).raise_for_status()

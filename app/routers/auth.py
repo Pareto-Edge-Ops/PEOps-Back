@@ -39,11 +39,11 @@ from app.schemas.common import OkResponse
 from app.services.limits import limiter
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-log = logging.getLogger("peops.auth")
+log = logging.getLogger("astra.auth")
 
 MIN_PASSWORD_LEN = 8
 MAX_PASSWORD_LEN = 200
-OAUTH_STATE_COOKIE = "peops_oauth_state"
+OAUTH_STATE_COOKIE = "astra_oauth_state"
 
 
 def _err(status: int, code: str, message: str) -> HTTPException:

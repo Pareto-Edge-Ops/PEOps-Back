@@ -135,13 +135,13 @@ def simulate_burst(
 
 
 # ── hardware-aware fleet simulation ──────────────────────────────────────────
-# Demo only (gated by PEOPS_TELEMETRY_SIM_ENABLED): on a machine without an
+# Demo only (gated by ASTRA_TELEMETRY_SIM_ENABLED): on a machine without an
 # NVIDIA GPU the real serve path can't produce GPU/multi-hardware data, so this
 # injects a believable serving fleet — the same compressed artifact running on a
 # T4, an A10G, an Apple CoreML box and a hosted x86 CPU — so the per-hardware
 # speed + GPU resource views are visible and verifiable. Rows are written as
 # ordinary client telemetry (events + snapshots + windows), identical in shape
-# to what peops-sdk ships, so aggregation treats them exactly like real fleets.
+# to what astra-sdk ships, so aggregation treats them exactly like real fleets.
 
 # Each profile: relative inference cost + the hardware identity the dashboard
 # attributes it to. Latencies are deliberately ordered GPU < CoreML < CPU so the

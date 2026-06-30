@@ -1,10 +1,10 @@
-# PEOps Backend
+# Astra Backend
 
 **Sensitivity-Guided Pareto Search + Surrogate Model + Telemetry Closed-Loop** —
-온디바이스 AI 모델 압축 자동화 서비스 PEOps의 백엔드.
+온디바이스 AI 모델 압축 자동화 서비스 Astra의 백엔드.
 
-- **PEOps-Front**(`../PEOps-Front`)의 zod 검증 API 계약을 1:1로 충족합니다.
-- **PEOps-PoC**(`../PEOps-PoC`)의 실제 압축 엔진(`peops` 패키지)을 구동합니다 —
+- **Astra-Front**(`../Astra-Front`)의 zod 검증 API 계약을 1:1로 충족합니다.
+- **Astra-PoC**(`../Astra-PoC`)의 실제 압축 엔진(`astra` 패키지)을 구동합니다 —
   모델을 import하면 진짜 **UOSA 민감도 분석 → Optuna 3D Pareto 탐색 → DFCV 검증 →
   압축 ONNX 아티팩트**가 백그라운드에서 실행됩니다.
 
@@ -16,7 +16,7 @@ POST /api/models/import {fileName}            POST /api/models/upload (multipart
         │  실제 소형 모델 합성: torch CNN/LSTM/Attention,   │
         │  sklearn GradientBoosting)                       │
         ▼                                                  ▼
-   JobManager (ThreadPool) ──► peops 파이프라인 (6 페이즈, 실제 수치 로깅)
+   JobManager (ThreadPool) ──► astra 파이프라인 (6 페이즈, 실제 수치 로깅)
         │   ingest → detect → OnnxAnalyzer → compute_uosa(UOSA)
         │   → ParetoSearch(Optuna) → Surrogate(sklearn) → DFCV validate → export
         ▼
@@ -37,8 +37,8 @@ POST /api/models/import {fileName}            POST /api/models/upload (multipart
 
 ## 실행
 
-압축 엔진(`peops/`)은 이 repo에 **벤더링**되어 있어 별도 설치가 필요 없습니다.
-`pip install -e .`이 `app/`과 `peops/`를 함께 설치하고, `[engine]` extra가 엔진의
+압축 엔진(`astra/`)은 이 repo에 **벤더링**되어 있어 별도 설치가 필요 없습니다.
+`pip install -e .`이 `app/`과 `astra/`를 함께 설치하고, `[engine]` extra가 엔진의
 서드파티 런타임 의존성(onnx/onnxruntime/optuna/sklearn/skl2onnx/torch)을 가져옵니다.
 
 ```bash
@@ -50,7 +50,7 @@ pip install -e ".[engine]"
 # 서버
 uvicorn app.main:app --port 8000
 # 데모/CI용 고속 모드 (tiny 모델 + 4 trials)
-PEOPS_FAST_PIPELINE=1 uvicorn app.main:app --port 8000
+ASTRA_FAST_PIPELINE=1 uvicorn app.main:app --port 8000
 ```
 
 > **단일 워커 전제**: 진행 중인 작업 레지스트리가 프로세스 인메모리라 컨테이너당
@@ -61,7 +61,7 @@ PEOPS_FAST_PIPELINE=1 uvicorn app.main:app --port 8000
 ### 프론트엔드 연동
 
 SPA는 `fetch('/api' + path)`(동일 출처)를 호출하고 DEV에선 MSW가 가로챕니다.
-실제 백엔드에 연결하려면 `PEOps-Front/vite.config.ts`에 프록시를 추가하세요:
+실제 백엔드에 연결하려면 `Astra-Front/vite.config.ts`에 프록시를 추가하세요:
 
 ```ts
 export default defineConfig({
@@ -117,11 +117,11 @@ uvicorn app.main:app --port 8000 &
 python3 scripts/smoke.py
 
 # 3) zod 계약 검증 — front의 실제 스키마로 라이브 응답 .parse()
-node scripts/contract_check.mjs --base http://localhost:8000 --front ../PEOps-Front
+node scripts/contract_check.mjs --base http://localhost:8000 --front ../Astra-Front
 
 # 4) 3D scene 수치 패리티 — front의 실제 mapRange/viridis 함수로 JS에서 재계산해
 #    백엔드 scene 응답과 === 비교 (~16,000개 값)
-node scripts/scene_parity_check.mjs --base http://localhost:8000 --front ../PEOps-Front
+node scripts/scene_parity_check.mjs --base http://localhost:8000 --front ../Astra-Front
 
 # 5) 폐루프 e2e — signup→파이프라인→배포→실추론→KPI/SSE→실알림까지 13개 체크
 python3 scripts/verify_closed_loop.py --base http://localhost:8000
@@ -136,11 +136,11 @@ python3 scripts/verify_real_models.py --base http://localhost:8000 \
 
 ### 폐루프 & SDK (요약)
 
-- 드리프트 모니터는 기본으로 API 프로세스 안에서 돕니다(`PEOPS_MONITOR_INLINE_ENABLED=1`
+- 드리프트 모니터는 기본으로 API 프로세스 안에서 돕니다(`ASTRA_MONITOR_INLINE_ENABLED=1`
   기본값). arq 워커를 운영하는 스케일드 배포는 0으로 끄고 워커 cron을 사용하세요.
-- 서빙 아티팩트는 guarantee 사다리(OFS≥`PEOPS_TAU`)를 통과한 인증본입니다 —
+- 서빙 아티팩트는 guarantee 사다리(OFS≥`ASTRA_TAU`)를 통과한 인증본입니다 —
   인제스션 로그에 certificate가 남습니다.
-- `clients/python`의 **peops-sdk**(PyPI 배포용)은 `LocalRunner`로 배포 아티팩트를
+- `clients/python`의 **astra-sdk**(PyPI 배포용)은 `LocalRunner`로 배포 아티팩트를
   내려받아 로컬 서빙하면서 텔레메트리(지연 분해·시스템 스냅샷·입출력 분포 윈도우)를
   `/api/v1/telemetry`로 전송합니다 — Telemetry 탭의 SDK clients/breakdown/output
   패널과 prediction/input drift 알림이 이 데이터로 동작합니다.
@@ -150,7 +150,7 @@ python3 scripts/verify_real_models.py --base http://localhost:8000 \
 ```
 app/
   main.py             앱 팩토리 (/api 마운트, CORS, lifespan: DB init+seed)
-  config.py           PEOPS_* 설정 / 결정적 REF 시각
+  config.py           ASTRA_* 설정 / 결정적 REF 시각
   db.py dbmodels.py   SQLite(WAL) + SQLModel 테이블
   schemas/            zod 1:1 미러 pydantic (camelCase)
   repositories.py     목록 정렬/필터 (front mock 의미론 재현) + result cache
@@ -162,7 +162,7 @@ app/
     surrogate.py      sklearn 서로게이트 (PoC 스텁의 백엔드 구현)
     drift.py          드리프트 감지 + closed-loop 액션
     mappers/          op_kind / layout / GraphInfo→Architecture / ParetoResult→Experiment
-  engine/adapter.py   유일한 peops 임포트 지점 — 6페이즈 파이프라인 러너
+  engine/adapter.py   유일한 astra 임포트 지점 — 6페이즈 파이프라인 러너
   seed.py             front mockData 기반 첫 부팅 시드
 tests/                계약·매퍼·e2e·SSE·드리프트·결정성 (57 tests)
 scripts/smoke.py      라이브 전 엔드포인트 스모크
@@ -176,7 +176,7 @@ scripts/contract_check.mjs   front zod 스키마 직접 로드 → 계약 검증
 - `.pb`/`.tflite`/`.mlmodel`은 변환기 미설치로 ONNX 등가 모델을 합성하고 포맷
   라벨만 유지합니다 (실제 multipart 업로드 시 해당 포맷은 ingest 단계에서 실패 →
   모델 status `failed` + ERROR 로그).
-- UOSA는 연산자당 ORT 세션을 생성하므로 `PEOPS_MAX_COMPRESSIBLE_OPS`로 캡합니다
+- UOSA는 연산자당 ORT 세션을 생성하므로 `ASTRA_MAX_COMPRESSIBLE_OPS`로 캡합니다
   (초과 연산자는 FP32 보호).
 
 ### MSW mock과의 의도적 차이
@@ -193,5 +193,5 @@ scripts/contract_check.mjs   front zod 스키마 직접 로드 → 계약 검증
 ## 라이선스
 
 아직 라이선스 파일이 없습니다. **공개 저장소로 푸시하기 전에** 라이선스를 정해
-`LICENSE` 파일을 추가하세요. `peops/`는 PEOps-PoC에서 벤더링한 코드이므로 원
+`LICENSE` 파일을 추가하세요. `astra/`는 Astra-PoC에서 벤더링한 코드이므로 원
 프로젝트의 라이선스와 호환되는지 확인하고 필요한 저작자 표시를 포함해야 합니다.

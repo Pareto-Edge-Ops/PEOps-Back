@@ -15,7 +15,7 @@ def test_deploy_mints_endpoint_and_key(make_live_model, deploy_model, client):
     assert dep["endpoint"].endswith(f"/api/v1/infer/{dep['id']}")
     assert dep["status"] == "live"
     # Plaintext key shown once; only a masked prefix is persisted/listed.
-    assert key.startswith("peops_sk_live_")
+    assert key.startswith("astra_sk_live_")
     assert "…" in dep["keyPrefix"] and key not in dep["keyPrefix"]
 
     # The model flips to deployed — both the boolean flag AND the lifecycle
@@ -42,7 +42,7 @@ def test_pause_resume_and_rotate(make_live_model, deploy_model, client):
     assert resumed["status"] == "live"
 
     rot = client.post(f"/api/deployments/{dep_id}/rotate-key").json()
-    assert rot["apiKey"].startswith("peops_sk_live_")
+    assert rot["apiKey"].startswith("astra_sk_live_")
     assert rot["apiKey"] != key  # a genuinely new secret
 
 

@@ -6,7 +6,7 @@ import pytest
 
 np = pytest.importorskip("numpy")
 
-from peops_sdk.stats import WindowAggregator
+from astra_sdk.stats import WindowAggregator
 
 
 def test_classifier_shaped_output():

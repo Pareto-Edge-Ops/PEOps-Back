@@ -1,10 +1,10 @@
 {
-  "name": "peops-sdk",
+  "name": "astra-sdk",
   "version": "0.2.0",
-  "description": "Serve PEOps-compressed models anywhere — hosted or local ONNX serving with built-in telemetry that feeds the PEOps dashboard",
+  "description": "Serve Astra-compressed models anywhere — hosted or local ONNX serving with built-in telemetry that feeds the Astra dashboard",
   "type": "module",
   "license": "MIT",
-  "author": "PEOps",
+  "author": "Astra",
   "keywords": [
     "onnx",
     "model-compression",
@@ -16,7 +16,7 @@
     "node": ">=18.17"
   },
   "bin": {
-    "peops": "./dist/cli.js"
+    "astra": "./dist/cli.js"
   },
   "main": "./dist/index.js",
   "module": "./dist/index.js",
@@ -54,10 +54,10 @@
     "typescript": "^5.4",
     "vitest": "^1.6"
   },
-  "homepage": "https://github.com/peops/peops#readme",
+  "homepage": "https://github.com/astra/astra#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/peops/peops.git",
+    "url": "https://github.com/astra/astra.git",
     "directory": "clients/node"
   }
 }

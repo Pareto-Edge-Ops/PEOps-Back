@@ -1,4 +1,4 @@
-"""Mirrors PEOps-Front/src/features/sdk-hub/types.ts.
+"""Mirrors Astra-Front/src/features/sdk-hub/types.ts.
 
 `GET /api/sdk/snippets` returns an OBJECT keyed by language — not an array.
 """

@@ -9,7 +9,7 @@ never disagree with what the backend actually does.
 Honest scope encoded here:
   - `taskValidation` is False for EVERY format: there is no perplexity/BLEU/
     token-accuracy metric anywhere — fidelity is output similarity on synthetic
-    probes (`peops/core/guarantee.py`), not downstream task accuracy.
+    probes (`astra/core/guarantee.py`), not downstream task accuracy.
   - `llmCaveat` flags the containers a Transformer/LLM is plausibly shipped in.
     Even on the full tier those models' "guarantee" is probe-fidelity, and the
     calibration probes are float tensors, not token IDs — so it does not mean

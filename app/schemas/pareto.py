@@ -1,4 +1,4 @@
-"""Mirrors PEOps-Front/src/features/pareto/types.ts."""
+"""Mirrors Astra-Front/src/features/pareto/types.ts."""
 
 from __future__ import annotations
 

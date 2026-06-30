@@ -1,4 +1,4 @@
-"""Mirrors PEOps-Front/src/features/models/types.ts.
+"""Mirrors Astra-Front/src/features/models/types.ts.
 
 Optionality rules (zod):
   - lastOptimizedAt / bestAccuracy: `.nullable()` — key always present, may be null

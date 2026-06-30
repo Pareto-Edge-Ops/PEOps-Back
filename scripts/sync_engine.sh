@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Sync the peops engine from its source of truth (the PEOps-PoC research repo)
+# Sync the astra engine from its source of truth (the Astra-PoC research repo)
 # into the two vendored copies. All engine edits land in the PoC first; this
 # script is the only sanctioned way bytes flow into the backend.
 set -euo pipefail
 
-SRC="${PEOPS_POC_DIR:-$HOME/Desktop/PEOps-PoC}/peops"
-BACK="$(cd "$(dirname "$0")/.." && pwd)/peops"
-MINI="$(cd "$(dirname "$0")/../.." && pwd)/PEOps-PoC/peops"
+SRC="${ASTRA_POC_DIR:-$HOME/Desktop/Astra-PoC}/astra"
+BACK="$(cd "$(dirname "$0")/.." && pwd)/astra"
+MINI="$(cd "$(dirname "$0")/../.." && pwd)/Astra-PoC/astra"
 
 if [ ! -d "$SRC" ]; then
   echo "source engine not found: $SRC" >&2

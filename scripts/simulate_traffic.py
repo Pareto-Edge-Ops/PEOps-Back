@@ -10,7 +10,7 @@ Example:
     python scripts/simulate_traffic.py \
         --base-url http://localhost:8000 \
         --deployment dep_ab12cd34ef \
-        --api-key peops_sk_live_xxxxxxxx \
+        --api-key astra_sk_live_xxxxxxxx \
         --rate 5 --duration 120 --incidents
 """
 
@@ -25,10 +25,10 @@ import httpx
 
 
 def _parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="PEOps inference traffic generator")
+    p = argparse.ArgumentParser(description="Astra inference traffic generator")
     p.add_argument("--base-url", default="http://localhost:8000")
     p.add_argument("--deployment", required=True, help="deployment id (dep_…)")
-    p.add_argument("--api-key", required=True, help="bearer key (peops_sk_live_…)")
+    p.add_argument("--api-key", required=True, help="bearer key (astra_sk_live_…)")
     p.add_argument("--rate", type=float, default=5.0, help="requests per second")
     p.add_argument("--duration", type=float, default=120.0, help="seconds to run")
     p.add_argument("--incidents", action="store_true",

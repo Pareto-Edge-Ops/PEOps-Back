@@ -1,4 +1,4 @@
-"""Mirrors PEOps-Front/src/features/architecture/types.ts.
+"""Mirrors Astra-Front/src/features/architecture/types.ts.
 
 `LayerEdge.from` is a Python keyword — aliased; every dump must use
 `by_alias=True` (routers serialize via `to_response()` helpers).

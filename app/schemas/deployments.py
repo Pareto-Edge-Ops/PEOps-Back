@@ -1,4 +1,4 @@
-"""Deployment management DTOs (mirrors PEOps-Front/src/features/deployments)."""
+"""Deployment management DTOs (mirrors Astra-Front/src/features/deployments)."""
 
 from __future__ import annotations
 

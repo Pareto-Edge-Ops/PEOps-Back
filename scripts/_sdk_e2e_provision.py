@@ -18,7 +18,7 @@ def main() -> None:
     args = ap.parse_args()
 
     c = httpx.Client(base_url=args.base.rstrip("/"), timeout=60.0)
-    email = f"sdk-e2e+{uuid.uuid4().hex[:8]}@peops.dev"
+    email = f"sdk-e2e+{uuid.uuid4().hex[:8]}@astra.dev"
     r = c.post("/api/auth/signup", json={
         "email": email, "password": "sdk-e2e-pass-1234", "name": "SDK E2E"})
     r.raise_for_status()

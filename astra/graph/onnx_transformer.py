@@ -14,8 +14,8 @@ import numpy as np
 import onnx
 from onnx import TensorProto, numpy_helper
 
-from peops.core.compression_actions import ConcreteAction
-from peops.graph.onnx_analyzer import OperatorCategory
+from astra.core.compression_actions import ConcreteAction
+from astra.graph.onnx_analyzer import OperatorCategory
 
 
 # Execution order for actions within a single apply() pass. Quantization must

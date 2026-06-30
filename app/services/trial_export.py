@@ -86,10 +86,10 @@ def _materialize(
     import tempfile
 
     import onnx
-    from peops.core.compression_actions import ActionTranslator
-    from peops.graph.onnx_analyzer import OnnxAnalyzer
-    from peops.graph.onnx_transformer import OnnxTransformer
-    from peops.sdk import _reconstruct_model
+    from astra.core.compression_actions import ActionTranslator
+    from astra.graph.onnx_analyzer import OnnxAnalyzer
+    from astra.graph.onnx_transformer import OnnxTransformer
+    from astra.sdk import _reconstruct_model
 
     raw = storage.read_bytes(src_key)
     if len(raw) > max_mb * 1e6:

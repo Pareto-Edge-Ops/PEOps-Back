@@ -12,7 +12,7 @@ import enum
 from dataclasses import dataclass
 from typing import Any
 
-from peops.graph.onnx_analyzer import OperatorCategory, OperatorInfo
+from astra.graph.onnx_analyzer import OperatorCategory, OperatorInfo
 
 
 class PrecisionLevel(enum.IntEnum):

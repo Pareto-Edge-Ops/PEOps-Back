@@ -8,7 +8,7 @@ The DB contains ONLY real pipeline results (no fixtures), so the smoke first
 provisions a real model through the live pipeline, then validates every JSON
 response against the backend pydantic mirrors. It also uploads a raw
 state_dict checkpoint to exercise the weight-only path. With the server in
-real-pipeline mode (PEOPS_FAST_PIPELINE=0) this doubles as the real
+real-pipeline mode (ASTRA_FAST_PIPELINE=0) this doubles as the real
 Optuna/UOSA e2e check.
 """
 
@@ -88,7 +88,7 @@ def main() -> int:
     # ── Authenticate (every /api route is now session-gated) ────────────────
     import uuid
 
-    email = f"smoke_{uuid.uuid4().hex[:10]}@peops.dev"
+    email = f"smoke_{uuid.uuid4().hex[:10]}@astra.dev"
     check("auth/signup", lambda: c.post("/api/auth/signup", json={
         "email": email, "password": "smoke-pass-1234", "name": "Smoke"}).raise_for_status())
     check("auth/me", lambda: c.get("/api/auth/me").raise_for_status())

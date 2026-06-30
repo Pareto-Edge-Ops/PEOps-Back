@@ -1,6 +1,6 @@
 """Guard against drift between the vendored engine and its source of truth.
 
-The peops engine is edited ONLY in the PEOps-PoC research repo and synced here
+The astra engine is edited ONLY in the Astra-PoC research repo and synced here
 via scripts/sync_engine.sh. On machines that have the sibling checkout, any
 byte difference fails this test; elsewhere (CI without the research repo) it
 skips.
@@ -12,10 +12,10 @@ from pathlib import Path
 
 import pytest
 
-_BACK_ENGINE = Path(__file__).resolve().parents[1] / "peops"
+_BACK_ENGINE = Path(__file__).resolve().parents[1] / "astra"
 _POC_ENGINE = Path(
-    os.environ.get("PEOPS_POC_DIR", Path.home() / "Desktop" / "PEOps-PoC")
-) / "peops"
+    os.environ.get("ASTRA_POC_DIR", Path.home() / "Desktop" / "Astra-PoC")
+) / "astra"
 
 
 def _tree_diff(a: Path, b: Path) -> list[str]:
@@ -40,10 +40,10 @@ def _tree_diff(a: Path, b: Path) -> list[str]:
     return diffs
 
 
-@pytest.mark.skipif(not _POC_ENGINE.is_dir(), reason="PEOps-PoC sibling not present")
+@pytest.mark.skipif(not _POC_ENGINE.is_dir(), reason="Astra-PoC sibling not present")
 def test_vendored_engine_matches_source_of_truth():
     diffs = _tree_diff(_POC_ENGINE, _BACK_ENGINE)
     assert not diffs, (
-        "vendored engine drifted from PEOps-PoC — run scripts/sync_engine.sh:\n"
+        "vendored engine drifted from Astra-PoC — run scripts/sync_engine.sh:\n"
         + "\n".join(diffs)
     )

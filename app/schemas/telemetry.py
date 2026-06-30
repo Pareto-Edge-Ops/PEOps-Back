@@ -1,4 +1,4 @@
-"""Mirrors PEOps-Front/src/features/telemetry/types.ts.
+"""Mirrors Astra-Front/src/features/telemetry/types.ts.
 
 Note: `accuracyDrift` is `{value, note}` — unlike the other three KPI blocks
 which are `{value, deltaPct}`.

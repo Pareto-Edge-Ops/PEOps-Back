@@ -1,4 +1,4 @@
-"""PEOps backend — FastAPI app factory.
+"""Astra backend — FastAPI app factory.
 
 All routes mount under `/api` to match the SPA's fetch('/api' + path). In
 production the frontend is served from the same origin behind a reverse proxy so
@@ -24,7 +24,7 @@ from app.middleware import RequestContextMiddleware, configure_logging
 from app.seed import seed_if_empty
 from app.services.limits import limiter
 
-log = logging.getLogger("peops")
+log = logging.getLogger("astra")
 
 
 async def _inline_monitor_loop() -> None:
@@ -83,7 +83,7 @@ async def lifespan(app: FastAPI):
                 )
         except Exception:  # noqa: BLE001 — reaper must never block startup
             log.exception("orphaned-run reconcile failed")
-    log.info("PEOps backend ready (db=%s storage=%s inline_jobs=%s)",
+    log.info("Astra backend ready (db=%s storage=%s inline_jobs=%s)",
              "sqlite" if settings.is_sqlite else "postgres",
              settings.storage_backend, settings.inline_jobs)
 
@@ -102,10 +102,10 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     settings = get_settings()
     app = FastAPI(
-        title="PEOps Backend",
+        title="Astra Backend",
         description=(
             "Sensitivity-Guided Pareto Search + Surrogate Model + Real Inference "
-            "Benchmarks — backend for the PEOps on-device AI compression service"
+            "Benchmarks — backend for the Astra on-device AI compression service"
         ),
         version="1.0.0",
         lifespan=lifespan,
@@ -149,7 +149,7 @@ def create_app() -> FastAPI:
     # is the real-user traffic path; it must sit outside the cookie gate.
     api.include_router(infer.router)
     # Public — SDK telemetry ingestion + artifact pull, same Bearer-key auth
-    # as /v1/infer (the peops-sdk pip package holds only a deployment key).
+    # as /v1/infer (the astra-sdk pip package holds only a deployment key).
     api.include_router(client_telemetry.router)
     # Every other router requires a valid session. Handlers that scope by owner
     # also inject CurrentUser; this router-level gate is defense-in-depth so a

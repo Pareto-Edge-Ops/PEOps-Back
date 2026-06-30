@@ -1,7 +1,7 @@
-# PEOps backend image — serves both the API (uvicorn) and the worker (arq);
+# Astra backend image — serves both the API (uvicorn) and the worker (arq);
 # they differ only by the compose `command`.
 #
-# Build context is this repo (PEOps-Back). The compression engine (`peops/`) is
+# Build context is this repo (Astra-Back). The compression engine (`astra/`) is
 # vendored into the repo, so the image is fully self-contained — no sibling
 # checkout or manual copy step is required. `.dockerignore` keeps caches,
 # local databases and storage out of the build context.
@@ -37,7 +37,7 @@ RUN pip install \
         "gguf==0.19.0"
 
 # Install the backend + vendored engine + production extras. `app/` and the
-# vendored `peops/` package are both copied; `.[prod,engine]` installs the
+# vendored `astra/` package are both copied; `.[prod,engine]` installs the
 # production infra plus the engine's third-party deps (onnx/onnxruntime/optuna/
 # sklearn). CPU torch is already present from the layer above.
 COPY . /app/

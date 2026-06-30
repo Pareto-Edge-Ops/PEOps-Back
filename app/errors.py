@@ -15,7 +15,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 
-log = logging.getLogger("peops.error")
+log = logging.getLogger("astra.error")
 
 
 def install_error_handlers(app: FastAPI) -> None:

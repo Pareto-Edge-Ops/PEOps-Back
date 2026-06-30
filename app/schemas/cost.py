@@ -1,6 +1,6 @@
 """Cost & savings lens schemas.
 
-Mirrors PEOps-Front/src/features/telemetry/types.ts (ModelCostSummary) and
+Mirrors Astra-Front/src/features/telemetry/types.ts (ModelCostSummary) and
 src/features/dashboard/types.ts (WorkspaceCostSavings). Nullable fields are
 honest absences — a monthly $ is null until real traffic is measured, an
 original cost is null when no benchmark exists to derive the counterfactual.

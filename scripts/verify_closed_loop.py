@@ -4,12 +4,12 @@
 Run against a live backend (default http://localhost:8000) started with the
 inline drift monitor on a short interval, e.g.:
 
-    PEOPS_DB_PATH=/tmp/peops-verify/db.sqlite \
-    PEOPS_STORAGE_DIR=/tmp/peops-verify/storage \
-    PEOPS_WORK_DIR=/tmp/peops-verify/work \
-    PEOPS_FAST_PIPELINE=1 PEOPS_INLINE_JOBS=1 \
-    PEOPS_MONITOR_INLINE_ENABLED=1 PEOPS_MONITOR_INTERVAL_SEC=5 \
-    PEOPS_COOKIE_SECURE=0 PEOPS_RATE_LIMIT_ENABLED=0 \
+    ASTRA_DB_PATH=/tmp/astra-verify/db.sqlite \
+    ASTRA_STORAGE_DIR=/tmp/astra-verify/storage \
+    ASTRA_WORK_DIR=/tmp/astra-verify/work \
+    ASTRA_FAST_PIPELINE=1 ASTRA_INLINE_JOBS=1 \
+    ASTRA_MONITOR_INLINE_ENABLED=1 ASTRA_MONITOR_INTERVAL_SEC=5 \
+    ASTRA_COOKIE_SECURE=0 ASTRA_RATE_LIMIT_ENABLED=0 \
     uvicorn app.main:app --port 8000
 
     python3 scripts/verify_closed_loop.py --base http://localhost:8000
@@ -70,14 +70,14 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", default="http://localhost:8000")
     ap.add_argument("--monitor-interval", type=float, default=5.0,
-                    help="PEOPS_MONITOR_INTERVAL_SEC the server was started with")
+                    help="ASTRA_MONITOR_INTERVAL_SEC the server was started with")
     args = ap.parse_args()
     base = args.base.rstrip("/")
 
     c = httpx.Client(base_url=base, timeout=60.0)
 
     # 1 — auth
-    email = f"verify+{uuid.uuid4().hex[:8]}@peops.dev"
+    email = f"verify+{uuid.uuid4().hex[:8]}@astra.dev"
     r = c.post("/api/auth/signup", json={
         "email": email, "password": "verify-pass-1234", "name": "Verify"})
     step("signup issues a session", r.status_code == 200, email)

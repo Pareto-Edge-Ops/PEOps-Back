@@ -1,4 +1,4 @@
-# Build context is this repo (PEOps-Back). Keep caches, local state and secrets
+# Build context is this repo (Astra-Back). Keep caches, local state and secrets
 # out of the image to keep it small and avoid leaking dev artifacts.
 **/__pycache__/
 **/*.py[cod]
@@ -8,7 +8,7 @@
 .ruff_cache/
 
 # Local databases, object storage and logs (dev/runtime state)
-peops.db*
+astra.db*
 live.db*
 storage/
 storage_live/

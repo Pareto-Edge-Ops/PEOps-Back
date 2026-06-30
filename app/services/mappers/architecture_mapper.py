@@ -1,8 +1,8 @@
 """GraphInfo + UOSA SensitivityProfile → frontend Architecture.
 
-Inputs are duck-typed (peops dataclasses or test doubles) so this module has
-no peops import; the engine adapter supplies the real `recommend_for` callable
-built on peops' `get_action_space`.
+Inputs are duck-typed (astra dataclasses or test doubles) so this module has
+no astra import; the engine adapter supplies the real `recommend_for` callable
+built on astra' `get_action_space`.
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ ARCH_DISPLAY = {
 }
 
 
-class OpLike(Protocol):  # subset of peops OperatorInfo
+class OpLike(Protocol):  # subset of astra OperatorInfo
     name: str
     op_type: str
     param_count: int
@@ -37,7 +37,7 @@ class OpLike(Protocol):  # subset of peops OperatorInfo
     output_shapes: list
 
 
-class GraphLike(Protocol):  # subset of peops GraphInfo
+class GraphLike(Protocol):  # subset of astra GraphInfo
     operators: list
     adjacency: dict[str, list[str]]
     topo_order: list[str]

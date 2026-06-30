@@ -138,7 +138,7 @@ def meta(
         "deployments": len(deps),
         "liveDeployments": sum(1 for d in deps if d.status != "paused"),
         # Honest labeling of where live data comes from: hosted /v1/infer
-        # ("server") vs peops-sdk local serving ("client").
+        # ("server") vs astra-sdk local serving ("client").
         "sources": source_counts(session, model_id),
         "lastSnapshotAt": snap_ts,
     }
@@ -199,7 +199,7 @@ def clients(
     session: Session = Depends(get_session),
 ) -> list[dict]:
     """SDK client hosts serving this model locally — latest snapshot per client
-    (empty list when no peops-sdk traffic exists; the SPA hides the panel)."""
+    (empty list when no astra-sdk traffic exists; the SPA hides the panel)."""
     _model(session, model_id, current_user.id)
     rows = session.exec(
         select(TelemetrySnapshotRow)
@@ -422,7 +422,7 @@ def simulate(
         raise HTTPException(status_code=403, detail={
             "code": "sim_disabled",
             "message": "Traffic simulation is disabled. Set "
-                       "PEOPS_TELEMETRY_SIM_ENABLED=1 to enable it.",
+                       "ASTRA_TELEMETRY_SIM_ENABLED=1 to enable it.",
         })
     from app.services import traffic_sim
     from app.services.drift_monitor import drift_monitor_pass

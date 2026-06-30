@@ -1,5 +1,5 @@
 """Architecture 3D scene builder — serves every value the SPA's LayerGraph3D
-computes client-side (PEOps-Front/src/features/architecture/components/
+computes client-side (Astra-Front/src/features/architecture/components/
 LayerGraph3D.tsx): per-perceptron world positions, effective layer widths,
 bipartite edge geometry, sensitivity/viridis colors, camera framing, and the
 hover/inspector descriptions (real per-op metadata, see layer_descriptions.py).

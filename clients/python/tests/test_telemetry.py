@@ -8,7 +8,7 @@ import time
 import httpx
 import pytest
 
-from peops_sdk.telemetry import TelemetryReporter
+from astra_sdk.telemetry import TelemetryReporter
 
 
 class FakeBackend:
@@ -50,7 +50,7 @@ def backend(monkeypatch):
 
 def _reporter(**kw) -> TelemetryReporter:
     return TelemetryReporter(
-        "http://test", "dep_x", "peops_sk_test", sdk_version="0.2.0", **kw)
+        "http://test", "dep_x", "astra_sk_test", sdk_version="0.2.0", **kw)
 
 
 def test_events_flush_on_close(backend):
@@ -90,7 +90,7 @@ def test_disabled_via_flag(backend):
 
 
 def test_disabled_via_env(backend, monkeypatch):
-    monkeypatch.setenv("PEOPS_SDK_TELEMETRY", "0")
+    monkeypatch.setenv("ASTRA_SDK_TELEMETRY", "0")
     rep = _reporter()
     rep.record_event(latency_ms=1.0)
     rep.close()

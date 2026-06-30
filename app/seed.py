@@ -5,9 +5,9 @@ ever fabricated: every operational row in the DB comes from real uploads and
 real pipeline events. The only seeded rows are SDK documentation (quick-start
 snippets and recipes), which are static docs content, not operational state.
 
-Every snippet below targets APIs that actually exist: the peops-sdk packages
-(Python `pip install peops-sdk`, Node `npm i peops-sdk`) — PeopsClient /
-LocalRunner / `peops` CLI — and the real REST endpoints (/api/v1/infer,
+Every snippet below targets APIs that actually exist: the astra-sdk packages
+(Python `pip install astra-sdk`, Node `npm i astra-sdk`) — AstraClient /
+LocalRunner / `astra` CLI — and the real REST endpoints (/api/v1/infer,
 /api/v1/artifacts, /api/v1/telemetry). A version marker row lets upgrades
 replace stale docs rows in already-seeded databases.
 """
@@ -23,7 +23,7 @@ from app.dbmodels import RecipeRow, SdkSnippetRow
 # Bump when snippets/recipes change — seeded DBs are upgraded in place.
 _DOCS_VERSION = "7"
 
-# "Run the compressed model in YOUR code" guide. Each snippet uses the peops-sdk
+# "Run the compressed model in YOUR code" guide. Each snippet uses the astra-sdk
 # package as an embeddable library — `runner.run(inputs)` inside the user's own
 # app, NOT a server they must stand up. The base URL is baked into the SDK (the
 # hosted origin), so copy-paste code needs only the deployment id + API key —
@@ -32,30 +32,30 @@ _SNIPPETS: dict[str, dict] = {
     "python": {
         "language": "python", "filename": "infer.py",
         "code": '''# Run the compressed model inside your own code — no server, no base URL.
-# pip install 'peops-sdk[serve]'
-from peops_sdk import LocalRunner
+# pip install 'astra-sdk[serve]'
+from astra_sdk import LocalRunner
 
 # Deployment id + key from the Deployments tab (key shown once when minted).
 # Pulls + caches the compressed artifact, runs onnxruntime locally, and ships
 # latency / system / drift telemetry back to this dashboard.
-runner = LocalRunner.from_deployment("dep_...", "peops_sk_live_...")
+runner = LocalRunner.from_deployment("dep_...", "astra_sk_live_...")
 
 out = runner.run({"input": my_array})     # local inference, right here in your code
 print(out["latencyMs"], out["outputs"])
 runner.close()                            # flush telemetry on shutdown
 
-# Prefer a zero-code HTTP wrapper?  peops serve --port 8765   (see the CLI tab)''',
+# Prefer a zero-code HTTP wrapper?  astra serve --port 8765   (see the CLI tab)''',
     },
     "node": {
         "language": "node", "filename": "infer.ts",
         "code": '''// Run the compressed model inside your own code — no server, no base URL.
-// npm i peops-sdk onnxruntime-node
-import { LocalRunner } from "peops-sdk";
+// npm i astra-sdk onnxruntime-node
+import { LocalRunner } from "astra-sdk";
 
 // Deployment id + key from the Deployments tab (key shown once when minted).
 const runner = await LocalRunner.fromDeployment({
   deploymentId: "dep_...",
-  apiKey: "peops_sk_live_...",
+  apiKey: "astra_sk_live_...",
 });
 
 // inputs: name -> { data, dims, type? } (type defaults to "float32").
@@ -66,13 +66,13 @@ await runner.close();''',
     "cli": {
         "language": "cli", "filename": "serve.sh",
         "code": '''# Optional zero-code path: wrap the compressed model in a local POST /infer.
-pip install 'peops-sdk[serve]'      # or: npm i -g peops-sdk onnxruntime-node
+pip install 'astra-sdk[serve]'      # or: npm i -g astra-sdk onnxruntime-node
 
-export PEOPS_DEPLOYMENT_ID=dep_...         # Deployments tab -> deployment id
-export PEOPS_API_KEY=peops_sk_live_...     # shown once when the key is minted
+export ASTRA_DEPLOYMENT_ID=dep_...         # Deployments tab -> deployment id
+export ASTRA_API_KEY=astra_sk_live_...     # shown once when the key is minted
 
-peops pull                          # cache the compressed artifact
-peops serve --port 8765             # POST /infer now live at http://127.0.0.1:8765
+astra pull                          # cache the compressed artifact
+astra serve --port 8765             # POST /infer now live at http://127.0.0.1:8765
 # The library (Python/Node tabs) is usually enough — use this only for an HTTP wrapper.''',
     },
 }

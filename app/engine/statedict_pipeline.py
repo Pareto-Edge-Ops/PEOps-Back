@@ -111,7 +111,7 @@ def _classify(path: str, tensors: dict) -> str:
 def _sqnr_db_int8(arr) -> float:
     """Real INT8 quantization SQNR (dB) of one weight tensor.
 
-    Same symmetric per-tensor scheme as peops' OnnxTransformer weight path.
+    Same symmetric per-tensor scheme as astra' OnnxTransformer weight path.
     """
     import numpy as np
 

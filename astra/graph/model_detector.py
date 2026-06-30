@@ -17,7 +17,7 @@ import numpy as np
 import onnx
 from onnx import numpy_helper
 
-from peops.graph.onnx_analyzer import OnnxAnalyzer, GraphInfo, OperatorInfo, OperatorCategory
+from astra.graph.onnx_analyzer import OnnxAnalyzer, GraphInfo, OperatorInfo, OperatorCategory
 
 
 class ArchitectureType(enum.Enum):

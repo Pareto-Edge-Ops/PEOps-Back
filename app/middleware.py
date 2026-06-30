@@ -12,7 +12,7 @@ from starlette.requests import Request
 
 from app.config import Settings
 
-_access = logging.getLogger("peops.access")
+_access = logging.getLogger("astra.access")
 
 
 def configure_logging(settings: Settings) -> None:

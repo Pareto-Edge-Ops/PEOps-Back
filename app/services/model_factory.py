@@ -1,7 +1,7 @@
 """Synthesize a REAL small model from an import fileName.
 
 `POST /models/import` carries only a fileName (no bytes), so to run the genuine
-peops pipeline we build an actual model whose framework matches the extension
+astra pipeline we build an actual model whose framework matches the extension
 and whose architecture matches filename hints (lstm/attn/tree/...). All heavy
 imports (torch/sklearn) are lazy — the API boots without them.
 

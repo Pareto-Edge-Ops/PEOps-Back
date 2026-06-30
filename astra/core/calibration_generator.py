@@ -18,7 +18,7 @@ import numpy as np
 import onnx
 from onnx import numpy_helper
 
-from peops.graph.model_detector import ArchitectureType
+from astra.graph.model_detector import ArchitectureType
 
 
 @dataclass

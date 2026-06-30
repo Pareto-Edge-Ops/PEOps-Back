@@ -1,4 +1,4 @@
-// SDK e2e (Node) — runs with the TARBALL-INSTALLED peops-sdk from a /tmp project.
+// SDK e2e (Node) — runs with the TARBALL-INSTALLED astra-sdk from a /tmp project.
 //
 // Pulls the deployed artifact, serves it locally with LocalRunner, fires normal
 // traffic then distribution-shifted traffic, and flushes telemetry. No repo
@@ -11,11 +11,11 @@ import { parseArgs } from "node:util";
 const { values } = parseArgs({ options: { handoff: { type: "string" } } });
 const h = JSON.parse(readFileSync(values.handoff, "utf8"));
 
-const { LocalRunner } = await import("peops-sdk");
+const { LocalRunner } = await import("astra-sdk");
 
 // Prove we imported the INSTALLED tarball, not the repo source.
-const resolved = import.meta.resolve("peops-sdk");
-if (!resolved.includes("/node_modules/peops-sdk/")) {
+const resolved = import.meta.resolve("astra-sdk");
+if (!resolved.includes("/node_modules/astra-sdk/")) {
   throw new Error(`must import the INSTALLED tarball, got ${resolved}`);
 }
 console.log(`   using ${resolved}`);
@@ -24,7 +24,7 @@ const runner = await LocalRunner.fromDeployment({
   baseUrl: h.baseUrl,
   deploymentId: h.deploymentId,
   apiKey: h.apiKey,
-  cacheDir: "/tmp/peops-node-cache",
+  cacheDir: "/tmp/astra-node-cache",
 });
 
 const spec = runner.inputSpecs()[0];

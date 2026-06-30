@@ -45,7 +45,7 @@ def _redis():
 
 
 def _key(run_id: str) -> str:
-    return f"peops:cancel:{run_id}"
+    return f"astra:cancel:{run_id}"
 
 
 def request_cancel(run_id: str) -> None:

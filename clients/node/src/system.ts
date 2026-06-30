@@ -1,5 +1,5 @@
 // Host/system metrics for telemetry snapshots — stdlib only (os/process).
-// Mirrors clients/python/peops_sdk/system.py, minus GPU: Node has no NVML, so
+// Mirrors clients/python/astra_sdk/system.py, minus GPU: Node has no NVML, so
 // GPU fields are honestly omitted rather than fabricated. ORT version/providers
 // are passed in by the runner (which already imported onnxruntime-node) instead
 // of re-importing the native binary here.

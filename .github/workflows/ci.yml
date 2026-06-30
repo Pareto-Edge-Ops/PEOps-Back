@@ -52,14 +52,14 @@ jobs:
         run: pip install -e ".[dev,test-engine,prod]"
       - name: Verify the vendored engine imports
         run: |
-          python -c "import peops; \
-            from peops.core.uosa import compute_uosa; \
-            from peops.search.pareto_search import ParetoSearch; \
-            from peops.sdk import _reconstruct_model; \
+          python -c "import astra; \
+            from astra.core.uosa import compute_uosa; \
+            from astra.search.pareto_search import ParetoSearch; \
+            from astra.sdk import _reconstruct_model; \
             print('engine OK')"
       - name: Run tests (fast pipeline)
         env:
-          PEOPS_FAST_PIPELINE: "1"
-          PEOPS_INLINE_JOBS: "1"
-          PEOPS_RATE_LIMIT_ENABLED: "0"
+          ASTRA_FAST_PIPELINE: "1"
+          ASTRA_INLINE_JOBS: "1"
+          ASTRA_RATE_LIMIT_ENABLED: "0"
         run: python -m pytest -q

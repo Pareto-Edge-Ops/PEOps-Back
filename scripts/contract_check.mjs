@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
  * Contract check — validates the LIVE backend JSON against the frontend's
- * ACTUAL zod schemas (PEOps-Front/src/features/*\/types.ts), loaded through
+ * ACTUAL zod schemas (Astra-Front/src/features/*\/types.ts), loaded through
  * the front's own vite (ssrLoadModule transpiles the TS; vite + zod ship with
  * the front, this repo needs no node deps).
  *
  * Usage:
  *   node scripts/contract_check.mjs [--base http://localhost:8000] \
- *        [--front ../PEOps-Front] [--model-id m_uploaded_xxx]
+ *        [--front ../Astra-Front] [--model-id m_uploaded_xxx]
  */
 
 import { createRequire } from "node:module";
@@ -22,7 +22,7 @@ const args = Object.fromEntries(
   }, []),
 );
 const BASE = args.base ?? "http://localhost:8000";
-const FRONT = path.resolve(args.front ?? "../PEOps-Front");
+const FRONT = path.resolve(args.front ?? "../Astra-Front");
 
 // Resolve vite from the FRONT's node_modules regardless of this script's home.
 const frontRequire = createRequire(path.join(FRONT, "package.json"));
@@ -59,7 +59,7 @@ async function afetch(url, opts = {}) {
   return res;
 }
 async function signup() {
-  const email = `contract_${Date.now()}@peops.dev`;
+  const email = `contract_${Date.now()}@astra.dev`;
   const r = await afetch(`${BASE}/api/auth/signup`, {
     method: "POST",
     headers: { "content-type": "application/json" },

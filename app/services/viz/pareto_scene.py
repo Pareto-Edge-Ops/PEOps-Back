@@ -1,5 +1,5 @@
 """Pareto 3D scene builder — serves every value the SPA's ParetoFrontierPlot3D
-computes client-side (PEOps-Front/src/features/pareto/components/
+computes client-side (Astra-Front/src/features/pareto/components/
 ParetoFrontierPlot3D.tsx + components/three/AxesGrid.tsx): padded axis
 domains, 0..AXIS point positions, frontier/base colors and scales,
 constraint-based dimming, adaptive tick labels and tooltip strings.

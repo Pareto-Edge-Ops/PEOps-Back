@@ -4,7 +4,7 @@ Revision ID: 0004_client_telemetry
 Revises: 0003_telemetry
 Create Date: 2026-06-11
 
-The peops-sdk pip package serves deployed artifacts locally and ships telemetry
+The astra-sdk pip package serves deployed artifacts locally and ships telemetry
 batches to /api/v1/telemetry/{deployment_id}/batch. Request events land in the
 existing inference_events table (new `source` discriminator + client latency
 breakdown), while periodic system snapshots and windowed input/output stats get

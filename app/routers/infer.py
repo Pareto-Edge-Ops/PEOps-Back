@@ -2,7 +2,7 @@
 
 This is where REAL user traffic flows. Unlike every other router it is NOT
 behind the session-cookie gate (real callers are apps/devices, not browsers);
-it authenticates with `Authorization: Bearer <peops_sk_…>` instead. Every call —
+it authenticates with `Authorization: Bearer <astra_sk_…>` instead. Every call —
 success or failure — is recorded as an InferenceEventRow, which is exactly the
 raw data the Telemetry Dashboard aggregates.
 """

@@ -1,4 +1,4 @@
-"""Client-telemetry ingestion (peops-sdk path): batch endpoint, key-authed
+"""Client-telemetry ingestion (astra-sdk path): batch endpoint, key-authed
 artifact pull, drift detection from window stats, and aggregation parity."""
 
 from __future__ import annotations
@@ -85,7 +85,7 @@ def test_batch_happy_path(client, live_dep):
 def test_batch_auth_failures(client, live_dep):
     r = client.post(
         f"/api/v1/telemetry/{live_dep['dep_id']}/batch",
-        headers={"Authorization": "Bearer peops_sk_live_wrong"},
+        headers={"Authorization": "Bearer astra_sk_live_wrong"},
         json={"clientId": "x", "events": []},
     )
     assert r.status_code == 401

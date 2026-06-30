@@ -32,7 +32,7 @@ describe("pullArtifact", () => {
       }
       return { bytes: new Uint8Array(payload) };
     });
-    const cacheDir = await mkdtemp(join(tmpdir(), "peops-test-"));
+    const cacheDir = await mkdtemp(join(tmpdir(), "astra-test-"));
 
     const path1 = await pullArtifact({
       baseUrl: "http://t",

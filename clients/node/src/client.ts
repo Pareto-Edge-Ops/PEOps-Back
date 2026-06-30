@@ -1,5 +1,5 @@
-// Thin HTTP client for the PEOps hosted inference endpoint.
-// Mirrors clients/python/peops_sdk/client.py.
+// Thin HTTP client for the Astra hosted inference endpoint.
+// Mirrors clients/python/astra_sdk/client.py.
 
 import { resolveBaseUrl } from "./http.js";
 
@@ -20,7 +20,7 @@ export interface InferOptions {
 }
 
 /** Minimal client for POST /api/v1/infer/{deployment_id}. */
-export class PeopsClient {
+export class AstraClient {
   private readonly baseUrl: string;
   readonly deploymentId: string;
   private readonly apiKey: string;

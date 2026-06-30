@@ -30,16 +30,16 @@ from pathlib import Path
 
 import numpy as np
 
-from peops.sdk import PEOps
-from peops.search.pareto_search import (
+from astra.sdk import Astra
+from astra.search.pareto_search import (
     ParetoSearch,
     _dominated_hv_2d,           # reuse the engine's exact HV helper
     get_action_space,
 )
-from peops.graph.onnx_analyzer import OperatorCategory  # noqa: F401 (clarity)
+from astra.graph.onnx_analyzer import OperatorCategory  # noqa: F401 (clarity)
 
 KNEE_FRACS = {"t99": 0.99, "t995": 0.995, "t999": 0.999}
-TEST_DIR = Path("/Users/kwonminjae/Desktop/PEOps/test-models")
+TEST_DIR = Path("/Users/kwonminjae/Desktop/Astra/test-models")
 DEFAULT_MODELS = [  # ordered light → heavy; non-ONNX may not ingest in all envs
     "squeezenet1.1-7.onnx",
     "mobilenet_v1_0.25_128.tflite",
@@ -99,7 +99,7 @@ def sim_early_stop(xs, ys, floor, patience, eps):
 
 def run_model(path: Path, n_trials: int, seed: int):
     t0 = time.time()
-    result = PEOps.optimize(str(path), n_pareto_trials=n_trials, seed=seed,
+    result = Astra.optimize(str(path), n_pareto_trials=n_trials, seed=seed,
                             run_pareto=True, guarantee=False, verbose=False,
                             adaptive=False)  # fixed-length sweep for calibration
     elapsed = time.time() - t0

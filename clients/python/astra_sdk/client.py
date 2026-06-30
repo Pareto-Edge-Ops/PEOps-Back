@@ -1,4 +1,4 @@
-"""Thin HTTP client for the PEOps inference endpoint."""
+"""Thin HTTP client for the Astra inference endpoint."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ class InferenceError(Exception):
         self.message = message
 
 
-class PeopsClient:
+class AstraClient:
     """Minimal client for POST /api/v1/infer/{deployment_id}."""
 
     def __init__(
@@ -73,7 +73,7 @@ class PeopsClient:
     def close(self) -> None:
         self._client.close()
 
-    def __enter__(self) -> "PeopsClient":
+    def __enter__(self) -> "AstraClient":
         return self
 
     def __exit__(self, *_exc: object) -> None:

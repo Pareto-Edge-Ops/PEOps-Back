@@ -1,7 +1,7 @@
 """Pydantic response models mirroring the frontend zod schemas 1:1.
 
 Field names are camelCase on purpose — every response is zod-`.parse()`d by the
-SPA, so names/optionality/enums must match `PEOps-Front/src/features/*/types.ts`
+SPA, so names/optionality/enums must match `Astra-Front/src/features/*/types.ts`
 exactly.
 """
 

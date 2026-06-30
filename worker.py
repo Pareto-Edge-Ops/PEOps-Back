@@ -1,4 +1,4 @@
-"""PEOps pipeline worker entrypoint.
+"""Astra pipeline worker entrypoint.
 
 Run with either:
     arq app.services.queue.WorkerSettings
@@ -6,7 +6,7 @@ or:
     python worker.py
 
 Consumes compression jobs from Redis and runs the real engine. Scale by running
-multiple instances (each bounded by PEOPS_JOB_WORKERS concurrent jobs).
+multiple instances (each bounded by ASTRA_JOB_WORKERS concurrent jobs).
 """
 
 from __future__ import annotations

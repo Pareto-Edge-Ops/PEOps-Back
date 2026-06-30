@@ -39,37 +39,37 @@ def wait_model_terminal(client: TestClient, model_id: str, timeout: float = 15.0
 
 @pytest.fixture(scope="session")
 def client(tmp_path_factory: pytest.TempPathFactory) -> Iterator[TestClient]:
-    tmp = tmp_path_factory.mktemp("peops")
+    tmp = tmp_path_factory.mktemp("astra")
     os.environ.update({
-        "PEOPS_DB_PATH": str(tmp / "test.db"),
-        "PEOPS_STORAGE_DIR": str(tmp / "storage"),
-        "PEOPS_WORK_DIR": str(tmp / "work"),
-        "PEOPS_FAST_PIPELINE": "1",
-        "PEOPS_SEED": "42",
-        "PEOPS_JOB_TIMEOUT_SEC": "120",
+        "ASTRA_DB_PATH": str(tmp / "test.db"),
+        "ASTRA_STORAGE_DIR": str(tmp / "storage"),
+        "ASTRA_WORK_DIR": str(tmp / "work"),
+        "ASTRA_FAST_PIPELINE": "1",
+        "ASTRA_SEED": "42",
+        "ASTRA_JOB_TIMEOUT_SEC": "120",
         # No Redis broker in the suite — run pipelines inline on daemon threads.
-        "PEOPS_INLINE_JOBS": "1",
+        "ASTRA_INLINE_JOBS": "1",
         # The suite fires many requests fast; don't rate-limit it.
-        "PEOPS_RATE_LIMIT_ENABLED": "0",
+        "ASTRA_RATE_LIMIT_ENABLED": "0",
         # TestClient speaks http:// — Secure cookies wouldn't be stored/sent,
         # so the session cookie must be non-Secure for the suite.
-        "PEOPS_COOKIE_SECURE": "0",
-        "PEOPS_JWT_SECRET": "test-secret-not-for-prod",
+        "ASTRA_COOKIE_SECURE": "0",
+        "ASTRA_JWT_SECRET": "test-secret-not-for-prod",
         # Pin Google OFF for the suite regardless of a developer's local .env
         # (env vars outrank .env). The default-disabled contract tests rely on
         # this; the enabled-path tests opt in via _enable_google().
-        "PEOPS_GOOGLE_CLIENT_ID": "",
-        "PEOPS_GOOGLE_CLIENT_SECRET": "",
+        "ASTRA_GOOGLE_CLIENT_ID": "",
+        "ASTRA_GOOGLE_CLIENT_SECRET": "",
         # Pin feedback→GitHub OFF for the suite regardless of a developer's local
         # .env (env vars outrank .env). Otherwise the feedback contract tests would
         # fire the background task against the REAL GitHub API and open live issues.
-        "PEOPS_FEEDBACK_GITHUB_TOKEN": "",
-        "PEOPS_FEEDBACK_GITHUB_REPO": "",
+        "ASTRA_FEEDBACK_GITHUB_TOKEN": "",
+        "ASTRA_FEEDBACK_GITHUB_REPO": "",
         # Enable the demo traffic generator for the telemetry tests. The inline
         # drift-monitor loop is pinned OFF (production default is ON) so passes
         # only run when a test calls them — keeping alert assertions deterministic.
-        "PEOPS_TELEMETRY_SIM_ENABLED": "1",
-        "PEOPS_MONITOR_INLINE_ENABLED": "0",
+        "ASTRA_TELEMETRY_SIM_ENABLED": "1",
+        "ASTRA_MONITOR_INLINE_ENABLED": "0",
     })
 
     # Settings/engine/storage may have been cached by an earlier import — reset.
@@ -90,7 +90,7 @@ def client(tmp_path_factory: pytest.TempPathFactory) -> Iterator[TestClient]:
         # every subsequent request rides authenticated. Existing contract tests
         # therefore need no changes — they hit the same authed client.
         r = c.post("/api/auth/signup", json={
-            "email": "suite@peops.dev", "password": "suite-pass-1234", "name": "Suite",
+            "email": "suite@astra.dev", "password": "suite-pass-1234", "name": "Suite",
         })
         assert r.status_code == 200, r.text
         yield c

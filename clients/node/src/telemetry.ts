@@ -1,5 +1,5 @@
 // Background telemetry reporter — fault-tolerant by construction.
-// Mirrors clients/python/peops_sdk/telemetry.py.
+// Mirrors clients/python/astra_sdk/telemetry.py.
 //
 // Design contract: NOTHING here may ever throw into the caller's serving path.
 // Events buffer into a bounded array (drop-oldest under pressure, with the drop
@@ -7,7 +7,7 @@
 // POST /api/v1/telemetry/{deployment_id}/batch with backoff; a `beforeExit` hook
 // performs a final best-effort flush within a small budget.
 //
-// Disable entirely with enabled:false or PEOPS_SDK_TELEMETRY=0.
+// Disable entirely with enabled:false or ASTRA_SDK_TELEMETRY=0.
 
 import { randomBytes } from "node:crypto";
 
@@ -24,10 +24,10 @@ function envFloat(name: string, def: number): number {
 
 const QUEUE_MAX = 10_000;
 const BATCH_MAX = 450; // below the server's 500-item cap
-const FLUSH_INTERVAL_S = envFloat("PEOPS_SDK_FLUSH_INTERVAL_S", 5);
-const SNAPSHOT_INTERVAL_S = envFloat("PEOPS_SDK_SNAPSHOT_INTERVAL_S", 30);
-const WINDOW_INTERVAL_S = envFloat("PEOPS_SDK_WINDOW_INTERVAL_S", 60);
-const WINDOW_MAX_REQUESTS = Math.trunc(envFloat("PEOPS_SDK_WINDOW_MAX_REQUESTS", 200));
+const FLUSH_INTERVAL_S = envFloat("ASTRA_SDK_FLUSH_INTERVAL_S", 5);
+const SNAPSHOT_INTERVAL_S = envFloat("ASTRA_SDK_SNAPSHOT_INTERVAL_S", 30);
+const WINDOW_INTERVAL_S = envFloat("ASTRA_SDK_WINDOW_INTERVAL_S", 60);
+const WINDOW_MAX_REQUESTS = Math.trunc(envFloat("ASTRA_SDK_WINDOW_MAX_REQUESTS", 200));
 const ATEXIT_BUDGET_MS = 3000;
 
 const round = (x: number, p: number): number => {
@@ -37,7 +37,7 @@ const round = (x: number, p: number): number => {
 
 export function telemetryEnabled(flag?: boolean): boolean {
   if (flag === false) return false;
-  const v = process.env.PEOPS_SDK_TELEMETRY;
+  const v = process.env.ASTRA_SDK_TELEMETRY;
   return !(v === "0" || v === "false" || v === "no");
 }
 

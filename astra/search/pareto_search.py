@@ -37,21 +37,21 @@ import onnx
 import onnxruntime as ort
 import optuna
 
-from peops.core.compression_actions import (
+from astra.core.compression_actions import (
     ActionTranslator,
     CompressionConfig,
     PrecisionLevel,
     get_action_space,
 )
-from peops.core.uosa import SensitivityProfile
-from peops.graph.onnx_analyzer import (
+from astra.core.uosa import SensitivityProfile
+from astra.graph.onnx_analyzer import (
     GraphInfo,
     OnnxAnalyzer,
     OperatorCategory,
     OperatorInfo,
     initializer_bytes,
 )
-from peops.graph.onnx_transformer import OnnxTransformer
+from astra.graph.onnx_transformer import OnnxTransformer
 
 # Categories whose "fuse" flag maps to a real transformer handler
 # (bn_fusion / leaf_merging). For every other category the fuse action is a

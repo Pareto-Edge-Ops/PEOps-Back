@@ -1,4 +1,4 @@
-"""peops ParetoResult → frontend ParetoExperiment (duck-typed inputs)."""
+"""astra ParetoResult → frontend ParetoExperiment (duck-typed inputs)."""
 
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ def map_pareto(
     model_id: str,
     model_name: str,
     experiment_id: str,
-    pareto,  # peops ParetoResult (duck-typed)
+    pareto,  # astra ParetoResult (duck-typed)
     *,
     status: str = "completed",
     served_trial_number: int | None = None,

@@ -1,7 +1,7 @@
 # Run `pre-commit install` once, then hooks run on every commit.
-# Vendored engine (peops/) and generated migrations are excluded from ruff via
+# Vendored engine (astra/) and generated migrations are excluded from ruff via
 # pyproject's [tool.ruff] extend-exclude.
-exclude: '^(peops/|migrations/)'
+exclude: '^(astra/|migrations/)'
 
 repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit

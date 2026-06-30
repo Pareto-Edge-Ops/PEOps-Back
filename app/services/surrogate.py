@@ -1,4 +1,4 @@
-"""Surrogate model service — the PoC's `peops/surrogate/` is an empty stub;
+"""Surrogate model service — the PoC's `astra/surrogate/` is an empty stub;
 the backend implements it here.
 
 Trains sklearn gradient-boosted regressors on completed Pareto trials
@@ -45,7 +45,7 @@ class SurrogateModel:
         return np.asarray(feats, dtype=np.float64)
 
     def fit(self, points) -> SurrogateMetrics | None:
-        """`points`: iterable of peops ParetoPoint (duck-typed:
+        """`points`: iterable of astra ParetoPoint (duck-typed:
         .compression_config/.accuracy/.latency_ms/.model_size_bytes)."""
         points = [p for p in points if p.compression_config]
         if len(points) < 4:

@@ -42,17 +42,17 @@ from dataclasses import dataclass, field
 import numpy as np
 import onnx
 
-from peops.core.calibration_generator import CalibrationGenerator
-from peops.core.compression_actions import (
+from astra.core.calibration_generator import CalibrationGenerator
+from astra.core.compression_actions import (
     ActionTranslator,
     CompressionConfig,
     PrecisionLevel,
 )
-from peops.core.uosa import SensitivityProfile, compute_uosa
-from peops.core.validation import CompressionValidator
-from peops.graph.model_detector import ArchitectureType
-from peops.graph.onnx_analyzer import GraphInfo, OnnxAnalyzer, OperatorCategory
-from peops.graph.onnx_transformer import OnnxTransformer
+from astra.core.uosa import SensitivityProfile, compute_uosa
+from astra.core.validation import CompressionValidator
+from astra.graph.model_detector import ArchitectureType
+from astra.graph.onnx_analyzer import GraphInfo, OnnxAnalyzer, OperatorCategory
+from astra.graph.onnx_transformer import OnnxTransformer
 
 _STANDARD_CATEGORIES = (
     OperatorCategory.DENSE_COMPUTE,
@@ -122,7 +122,7 @@ class GuaranteeResult:
         """Human-readable fidelity certificate."""
         lines = [
             "─" * 56,
-            "  PEOps Guarantee Certificate",
+            "  Astra Guarantee Certificate",
             "─" * 56,
             f"  Fidelity floor (tau):   {self.tau}",
             f"  Gate probes:            {self.n_probes_gate} (seed={self.seed})",
@@ -148,7 +148,7 @@ def _quantize_int8_real(
     from onnxruntime.quantization import QuantType, quantize_dynamic
     from onnxruntime.quantization import preprocess as qpreprocess
 
-    tmpdir = tempfile.mkdtemp(prefix="peops_guarantee_")
+    tmpdir = tempfile.mkdtemp(prefix="astra_guarantee_")
     src = os.path.join(tmpdir, "model.onnx")
     prep = os.path.join(tmpdir, "model_prep.onnx")
     dst = os.path.join(tmpdir, "model_int8.onnx")
@@ -178,7 +178,7 @@ def _quantize_ml_native(
     protected: set[str],
     precision: PrecisionLevel,
 ) -> onnx.ModelProto:
-    """PEOps native attribute quantization for ai.onnx.ml operators."""
+    """Astra native attribute quantization for ai.onnx.ml operators."""
     translator = ActionTranslator()
     transformer = OnnxTransformer()
     actions = []
@@ -217,7 +217,7 @@ def _convert_fp16_real(model: onnx.ModelProto) -> onnx.ModelProto:
     to the next rung instead of a dead worker. The conversion is deterministic,
     so the isolated result is byte-identical to an in-process call."""
     ctx = multiprocessing.get_context("spawn")
-    tmpdir = tempfile.mkdtemp(prefix="peops_fp16_")
+    tmpdir = tempfile.mkdtemp(prefix="astra_fp16_")
     in_path = os.path.join(tmpdir, "in.onnx")
     out_path = os.path.join(tmpdir, "out.onnx")
     try:

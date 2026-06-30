@@ -6,7 +6,7 @@ with the drop count itself reported); a daemon thread flushes batches to
 POST /api/v1/telemetry/{deployment_id}/batch with backoff; atexit performs a
 final best-effort flush with a small time budget.
 
-Disable entirely with report_telemetry=False or PEOPS_SDK_TELEMETRY=0.
+Disable entirely with report_telemetry=False or ASTRA_SDK_TELEMETRY=0.
 """
 
 from __future__ import annotations
@@ -33,10 +33,10 @@ def _env_float(name: str, default: float) -> float:
 
 _QUEUE_MAX = 10_000
 _BATCH_MAX = 450            # below the server's 500-item cap
-_FLUSH_INTERVAL_S = _env_float("PEOPS_SDK_FLUSH_INTERVAL_S", 5.0)
-_SNAPSHOT_INTERVAL_S = _env_float("PEOPS_SDK_SNAPSHOT_INTERVAL_S", 30.0)
-_WINDOW_INTERVAL_S = _env_float("PEOPS_SDK_WINDOW_INTERVAL_S", 60.0)
-_WINDOW_MAX_REQUESTS = int(_env_float("PEOPS_SDK_WINDOW_MAX_REQUESTS", 200))
+_FLUSH_INTERVAL_S = _env_float("ASTRA_SDK_FLUSH_INTERVAL_S", 5.0)
+_SNAPSHOT_INTERVAL_S = _env_float("ASTRA_SDK_SNAPSHOT_INTERVAL_S", 30.0)
+_WINDOW_INTERVAL_S = _env_float("ASTRA_SDK_WINDOW_INTERVAL_S", 60.0)
+_WINDOW_MAX_REQUESTS = int(_env_float("ASTRA_SDK_WINDOW_MAX_REQUESTS", 200))
 _ATEXIT_BUDGET_S = 3.0
 
 
@@ -47,7 +47,7 @@ def _iso_now() -> str:
 def telemetry_enabled(flag: bool | None = None) -> bool:
     if flag is not None and not flag:
         return False
-    return os.environ.get("PEOPS_SDK_TELEMETRY", "1") not in ("0", "false", "no")
+    return os.environ.get("ASTRA_SDK_TELEMETRY", "1") not in ("0", "false", "no")
 
 
 class TelemetryReporter:
@@ -87,7 +87,7 @@ class TelemetryReporter:
             self._http = HttpSession(
                 base_url, api_key, timeout=10.0, max_attempts=2, max_backoff=30.0)
             self._thread = threading.Thread(
-                target=self._loop, name="peops-telemetry", daemon=True)
+                target=self._loop, name="astra-telemetry", daemon=True)
             self._thread.start()
             atexit.register(self.close)
 

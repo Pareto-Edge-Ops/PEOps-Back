@@ -1,11 +1,11 @@
-"""LocalRunner — serve a PEOps-deployed artifact on your own hardware.
+"""LocalRunner — serve a Astra-deployed artifact on your own hardware.
 
-    from peops_sdk import LocalRunner
+    from astra_sdk import LocalRunner
 
     runner = LocalRunner.from_deployment(
         base_url="https://app.example.com",
         deployment_id="dep_ab12cd34ef",
-        api_key="peops_sk_live_…",
+        api_key="astra_sk_live_…",
     )
     out = runner.run({"input": my_numpy_array})    # local onnxruntime inference
     runner.close()
@@ -13,11 +13,11 @@
 The artifact is pulled once via the API-key-authed
 GET /api/v1/artifacts/{deployment_id} and cached on disk keyed by its sha256,
 so restarts don't re-download. Every run() is measured (pre/infer/post) and
-shipped to the PEOps dashboard by the background TelemetryReporter, together
+shipped to the Astra dashboard by the background TelemetryReporter, together
 with periodic system snapshots and windowed input/output stats — the same
 closed loop hosted serving gets, but on your hardware.
 
-Requires the [serve] extra:  pip install 'peops-sdk[serve]'
+Requires the [serve] extra:  pip install 'astra-sdk[serve]'
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ from typing import Any
 from ._http import HttpSession, resolve_base_url
 from .telemetry import TelemetryReporter
 
-_DEFAULT_CACHE = "~/.cache/peops"
+_DEFAULT_CACHE = "~/.cache/astra"
 
 
 class RunnerError(Exception):
@@ -44,7 +44,7 @@ def _require_serve_extra():
     except ImportError as exc:  # pragma: no cover - exercised only without extra
         raise RunnerError(
             "Local serving needs onnxruntime + numpy — install the extra: "
-            "pip install 'peops-sdk[serve]'"
+            "pip install 'astra-sdk[serve]'"
         ) from exc
     return numpy, onnxruntime
 
@@ -95,8 +95,8 @@ class LocalRunner:
     ) -> "LocalRunner":
         """Pull (or reuse) the deployed artifact and build a runner for it.
 
-        base_url defaults to the hosted PEOps origin (override with the
-        PEOPS_BASE_URL env var or the base_url keyword)."""
+        base_url defaults to the hosted Astra origin (override with the
+        ASTRA_BASE_URL env var or the base_url keyword)."""
         _require_serve_extra()
         base = resolve_base_url(base_url)
         path = pull_artifact(
@@ -254,7 +254,7 @@ def pull_artifact(
 ) -> Path:
     """Download the deployed artifact (sha256-cached under cache_dir).
 
-    base_url defaults to the hosted PEOps origin (override with PEOPS_BASE_URL)."""
+    base_url defaults to the hosted Astra origin (override with ASTRA_BASE_URL)."""
     http = HttpSession(resolve_base_url(base_url), api_key, timeout=timeout)
     try:
         info = http.request(

@@ -1,6 +1,6 @@
-"""The ONLY module that imports `peops` — runs the real compression pipeline.
+"""The ONLY module that imports `astra` — runs the real compression pipeline.
 
-Mirrors `PEOps.optimize()` (PEOps-PoC/peops/sdk.py) step-by-step but emits an
+Mirrors `Astra.optimize()` (Astra-PoC/astra/sdk.py) step-by-step but emits an
 IngestionLog line per event (6 phases, real numbers) and returns artifacts
 already mapped to the frontend contract shapes.
 """
@@ -74,20 +74,20 @@ def run_pipeline(
     hv_epsilon: float = 1e-3,
 ) -> PipelineArtifacts:
     import onnx  # noqa: F401 — fail fast if the engine extra is missing
-    from peops.core.calibration_generator import CalibrationGenerator
-    from peops.core.compression_actions import (
+    from astra.core.calibration_generator import CalibrationGenerator
+    from astra.core.compression_actions import (
         ActionTranslator,
         get_action_space,
     )
-    from peops.core.guarantee import build_gate_probes, gate_check, guarantee_compress
-    from peops.core.ingestion import ingest
-    from peops.core.uosa import compute_uosa
-    from peops.core.validation import CompressionValidator
-    from peops.graph.model_detector import ModelDetector
-    from peops.graph.onnx_analyzer import OnnxAnalyzer, initializer_bytes
-    from peops.graph.onnx_transformer import OnnxTransformer
-    from peops.sdk import _reconstruct_model
-    from peops.search.pareto_search import ParetoSearch
+    from astra.core.guarantee import build_gate_probes, gate_check, guarantee_compress
+    from astra.core.ingestion import ingest
+    from astra.core.uosa import compute_uosa
+    from astra.core.validation import CompressionValidator
+    from astra.graph.model_detector import ModelDetector
+    from astra.graph.onnx_analyzer import OnnxAnalyzer, initializer_bytes
+    from astra.graph.onnx_transformer import OnnxTransformer
+    from astra.sdk import _reconstruct_model
+    from astra.search.pareto_search import ParetoSearch
 
     t0 = time.time()
     phase_timings: list[dict] = []
@@ -132,13 +132,13 @@ def run_pipeline(
     ingested_dir.mkdir(parents=True, exist_ok=True)
     ingested_path = ingested_dir / f"{model_id}_ingested.onnx"
     onnx.save(model, str(ingested_path))
-    emit("INFO", f"Model artifact ingested into peops-registry (run {run_id})")
+    emit("INFO", f"Model artifact ingested into astra-registry (run {run_id})")
     progress(12)
     check_cancel()
 
     # ── Phase 2 · Architecture Analyzer · UOSA sensitivity ────────────────
     phase(2, "Architecture Analyzer · UOSA Sensitivity Profiling")
-    emit("INFO", "Phase 1 complete — starting peops-analyzer")
+    emit("INFO", "Phase 1 complete — starting astra-analyzer")
     analyzer = OnnxAnalyzer()
     graph_info = analyzer.analyze(model)
     emit("INFO", f"Graph analysis: {len(graph_info.operators)} operators, "
@@ -198,7 +198,7 @@ def run_pipeline(
 
     def dfcv_eval(compressed_model) -> float:
         # Called once per Optuna trial — the hook to (a) abort a long search
-        # mid-phase (peops' search loop has no cancellation parameter) and
+        # mid-phase (astra' search loop has no cancellation parameter) and
         # (b) stream live per-trial progress into the ingestion log. The emit is
         # paced by the search itself (one ORT validation per call), so it never
         # outruns the work it reports.
@@ -368,7 +368,7 @@ def run_pipeline(
 
     if compressed is None:
         emit("INFO", "Fallback: single UOSA-guided compression pass")
-        from peops.core.compression_actions import CompressionConfig
+        from astra.core.compression_actions import CompressionConfig
 
         actions = []
         for op in compressible:
@@ -487,7 +487,7 @@ def run_pipeline(
     _close_phase()
     elapsed = time.time() - t0
     mins, secs = divmod(int(elapsed), 60)
-    emit("INFO", f"All six phases complete · PEOps pipeline finished in {mins}m {secs}s")
+    emit("INFO", f"All six phases complete · Astra pipeline finished in {mins}m {secs}s")
     emit("INFO", "Sensitivity analysis ready")
     progress(100)
 

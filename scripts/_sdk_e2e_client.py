@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SDK e2e step 4 — runs with the WHEEL-INSTALLED peops_sdk from /tmp.
+"""SDK e2e step 4 — runs with the WHEEL-INSTALLED astra_sdk from /tmp.
 
 Pulls the deployed artifact, serves it locally with LocalRunner, fires
 normal traffic then distribution-shifted traffic, and flushes telemetry.
@@ -22,16 +22,16 @@ def main() -> None:
 
     import numpy as np
 
-    import peops_sdk
-    from peops_sdk import LocalRunner
+    import astra_sdk
+    from astra_sdk import LocalRunner
 
-    assert not peops_sdk.__file__.startswith("/Users/kwonminjae/Desktop/PEOps"), (
-        f"must import the INSTALLED wheel, got {peops_sdk.__file__}")
-    print(f"   using {peops_sdk.__file__}")
+    assert not astra_sdk.__file__.startswith("/Users/kwonminjae/Desktop/Astra"), (
+        f"must import the INSTALLED wheel, got {astra_sdk.__file__}")
+    print(f"   using {astra_sdk.__file__}")
 
     runner = LocalRunner.from_deployment(
         h["deploymentId"], h["apiKey"], base_url=h["baseUrl"],
-        cache_dir="/tmp/peops-sdk-cache",
+        cache_dir="/tmp/astra-sdk-cache",
     )
     print(f"   artifact cached at {runner.model_path}")
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Drive REAL HTTP inference against a separate `peops serve` server.
+"""Drive REAL HTTP inference against a separate `astra serve` server.
 
 This talks to the standalone HTTP server the SDK started on another port
 (127.0.0.1:8765/infer) — a genuinely separate Python process — over plain HTTP,

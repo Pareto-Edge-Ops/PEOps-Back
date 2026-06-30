@@ -12,9 +12,9 @@ import onnx
 import pytest
 from onnx import TensorProto, helper, numpy_helper
 
-from peops.graph.onnx_analyzer import OnnxAnalyzer, OperatorCategory
-from peops.core.compression_actions import ActionSpace, PrecisionLevel
-from peops.search.pareto_search import ParetoSearch, _dominated_hv_2d
+from astra.graph.onnx_analyzer import OnnxAnalyzer, OperatorCategory
+from astra.core.compression_actions import ActionSpace, PrecisionLevel
+from astra.search.pareto_search import ParetoSearch, _dominated_hv_2d
 
 
 # ───────────────────────── budget formula ─────────────────────────
@@ -124,10 +124,10 @@ def _tiny_cnn(n_conv=4, ch=8, seed=0):
 
 def _run(model, seed):
     gi = OnnxAnalyzer().analyze(model)
-    from peops.core.calibration_generator import CalibrationGenerator
-    from peops.core.uosa import compute_uosa
-    from peops.core.validation import CompressionValidator
-    from peops.graph.model_detector import ModelDetector
+    from astra.core.calibration_generator import CalibrationGenerator
+    from astra.core.uosa import compute_uosa
+    from astra.core.validation import CompressionValidator
+    from astra.graph.model_detector import ModelDetector
 
     spec = {"input": [1, 3, 16, 16]}
     cal = CalibrationGenerator(n_probes=8, seed=seed).generate(

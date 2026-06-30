@@ -17,7 +17,7 @@ from fastapi import Response
 
 from app.config import get_settings
 
-COOKIE_NAME = "peops_session"
+COOKIE_NAME = "astra_session"
 _ALGO = "HS256"
 
 

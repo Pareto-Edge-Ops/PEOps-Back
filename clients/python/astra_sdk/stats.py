@@ -4,7 +4,7 @@ The aggregator samples a bounded reservoir of requests per window and reduces
 them to compact stats: per-input tensor mean/std/min/max/NaN%, and — when the
 output looks classifier-shaped ([B, C], C <= 10000) — the argmax class
 distribution, a 16-bin top-1 confidence histogram, mean entropy and mean
-top-1 confidence. These windows are what the PEOps drift monitor compares
+top-1 confidence. These windows are what the Astra drift monitor compares
 against the deployment's reference to raise prediction/input drift alerts.
 """
 

@@ -1,10 +1,10 @@
-"""PEOps SDK: one-call interface for model optimization and deployment.
+"""Astra SDK: one-call interface for model optimization and deployment.
 
 Usage:
-    from peops.sdk import PEOps
+    from astra.sdk import Astra
 
     # Optimize any model (학습 데이터 불필요)
-    result = PEOps.optimize("/path/to/model.h5")
+    result = Astra.optimize("/path/to/model.h5")
 
     # Use the compressed model directly
     output = result.predict(input_data)
@@ -27,26 +27,26 @@ import numpy as np
 import onnx
 import onnxruntime as ort
 
-from peops.core.calibration_generator import CalibrationGenerator
-from peops.core.compression_actions import (
+from astra.core.calibration_generator import CalibrationGenerator
+from astra.core.compression_actions import (
     ActionTranslator,
     CompressionConfig,
     PrecisionLevel,
     get_action_space,
 )
-from peops.core.guarantee import GuaranteeResult, guarantee_compress
-from peops.core.ingestion import IngestionResult, ModelFormat, ingest
-from peops.core.uosa import SensitivityProfile, compute_uosa
-from peops.core.validation import CompressionValidator, ValidationResult
-from peops.graph.model_detector import ArchitectureType, ModelDetector, ModelReport
-from peops.graph.onnx_analyzer import GraphInfo, OnnxAnalyzer
-from peops.graph.onnx_transformer import OnnxTransformer
-from peops.search.pareto_search import ParetoResult, ParetoSearch
+from astra.core.guarantee import GuaranteeResult, guarantee_compress
+from astra.core.ingestion import IngestionResult, ModelFormat, ingest
+from astra.core.uosa import SensitivityProfile, compute_uosa
+from astra.core.validation import CompressionValidator, ValidationResult
+from astra.graph.model_detector import ArchitectureType, ModelDetector, ModelReport
+from astra.graph.onnx_analyzer import GraphInfo, OnnxAnalyzer
+from astra.graph.onnx_transformer import OnnxTransformer
+from astra.search.pareto_search import ParetoResult, ParetoSearch
 
 
 @dataclass
 class OptimizationResult:
-    """Complete result of PEOps model optimization."""
+    """Complete result of Astra model optimization."""
     original_model: onnx.ModelProto
     compressed_model: onnx.ModelProto
     detection: ModelReport
@@ -84,7 +84,7 @@ class OptimizationResult:
         """Human-readable optimization summary."""
         lines = [
             "═" * 50,
-            "  PEOps Optimization Result",
+            "  Astra Optimization Result",
             "═" * 50,
             f"  Architecture:  {self.detection.architecture.value} ({self.detection.confidence:.0%})",
             f"  Parameters:    {self.detection.total_params:,}",
@@ -99,7 +99,7 @@ class OptimizationResult:
         return "\n".join(lines)
 
 
-class PEOps:
+class Astra:
     """Main SDK entry point for model optimization."""
 
     @staticmethod
@@ -284,7 +284,7 @@ class PEOps:
     @staticmethod
     def predict(model_path: str, X: np.ndarray, input_shape: list[int] | None = None) -> np.ndarray:
         """Quick: optimize and predict in one call."""
-        result = PEOps.optimize(model_path, input_shape=input_shape, run_pareto=False, verbose=False)
+        result = Astra.optimize(model_path, input_shape=input_shape, run_pareto=False, verbose=False)
         return result.predict(X)
 
 

@@ -1,8 +1,8 @@
-"""peops CLI — pull / serve / bench a PEOps deployment locally.
+"""astra CLI — pull / serve / bench a Astra deployment locally.
 
-    peops pull  --base-url URL --deployment dep_x --api-key KEY
-    peops serve --base-url URL --deployment dep_x --api-key KEY --port 8765
-    peops bench --base-url URL --deployment dep_x --api-key KEY -n 200
+    astra pull  --base-url URL --deployment dep_x --api-key KEY
+    astra serve --base-url URL --deployment dep_x --api-key KEY --port 8765
+    astra bench --base-url URL --deployment dep_x --api-key KEY -n 200
 
 stdlib-only (argparse + http.server); the heavy lifting lives in LocalRunner.
 """
@@ -16,14 +16,14 @@ import sys
 
 
 def _add_common(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--base-url", default=os.environ.get("PEOPS_BASE_URL"),
-                   help="PEOps origin (optional; defaults to the hosted origin, "
-                        "env PEOPS_BASE_URL)")
-    p.add_argument("--deployment", default=os.environ.get("PEOPS_DEPLOYMENT_ID"),
-                   help="deployment id, e.g. dep_ab12cd34ef (env PEOPS_DEPLOYMENT_ID)")
-    p.add_argument("--api-key", default=os.environ.get("PEOPS_API_KEY"),
-                   help="deployment API key (env PEOPS_API_KEY)")
-    p.add_argument("--cache-dir", default="~/.cache/peops")
+    p.add_argument("--base-url", default=os.environ.get("ASTRA_BASE_URL"),
+                   help="Astra origin (optional; defaults to the hosted origin, "
+                        "env ASTRA_BASE_URL)")
+    p.add_argument("--deployment", default=os.environ.get("ASTRA_DEPLOYMENT_ID"),
+                   help="deployment id, e.g. dep_ab12cd34ef (env ASTRA_DEPLOYMENT_ID)")
+    p.add_argument("--api-key", default=os.environ.get("ASTRA_API_KEY"),
+                   help="deployment API key (env ASTRA_API_KEY)")
+    p.add_argument("--cache-dir", default="~/.cache/astra")
 
 
 def _require(args) -> None:
@@ -112,7 +112,7 @@ def cmd_serve(args) -> int:
 
     server = http.server.ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     print(f"serving {args.deployment} on http://127.0.0.1:{args.port}/infer "
-          f"(Ctrl-C to stop; telemetry → the PEOps dashboard)")
+          f"(Ctrl-C to stop; telemetry → the Astra dashboard)")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
@@ -124,8 +124,8 @@ def cmd_serve(args) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="peops",
-        description="Serve PEOps-compressed models locally with built-in telemetry.")
+        prog="astra",
+        description="Serve Astra-compressed models locally with built-in telemetry.")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_pull = sub.add_parser("pull", help="download the deployed artifact")

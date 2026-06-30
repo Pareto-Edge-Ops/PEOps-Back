@@ -1,7 +1,7 @@
 """ONNX op_type → frontend LayerKind mapping.
 
-The 14 LayerKind values come from PEOps-Front/src/features/architecture/types.ts;
-op categories from peops/graph/onnx_analyzer.py `_CATEGORY_MAP`.
+The 14 LayerKind values come from Astra-Front/src/features/architecture/types.ts;
+op categories from astra/graph/onnx_analyzer.py `_CATEGORY_MAP`.
 Data-movement / preprocessing ops return None → dropped (edges bridged).
 """
 
@@ -60,7 +60,7 @@ _DIRECT: dict[str, str] = {
 # torch exporters emit scope-style names like "/q/MatMul", "/attn/qkv/MatMul".
 _ATTN_NAME_TOKENS = ("attn", "attention", "query", "/q/", "/k/", "/v/", "qkv")
 
-ATTN_WINDOW = 5  # mirrors peops/graph/model_detector.py:_detect_attention_pattern
+ATTN_WINDOW = 5  # mirrors astra/graph/model_detector.py:_detect_attention_pattern
 
 
 def kind_for(op_name: str, op_type: str, *, in_attention_window: bool = False) -> str | None:
@@ -77,7 +77,7 @@ def kind_for(op_name: str, op_type: str, *, in_attention_window: bool = False) -
 
 def find_attention_ops(ordered_ops: list[tuple[str, str]]) -> set[str]:
     """Detect attention score blocks with the PoC's window semantics
-    (peops/graph/model_detector.py:184-191): a MatMul whose next ≤5 ops contain
+    (astra/graph/model_detector.py:184-191): a MatMul whose next ≤5 ops contain
     a Softmax and at least one more MatMul. Real exports insert a scale `Mul`
     between QK^T and Softmax, so a strict [MatMul,Softmax,MatMul] match misses
     every actual attention block."""

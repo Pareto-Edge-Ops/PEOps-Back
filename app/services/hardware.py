@@ -11,7 +11,7 @@ views the platform's value prop actually needs:
 Events themselves don't carry hardware, but every SDK client_id has exactly one
 hardware identity (from its snapshots), so we build a client_id → hardware map
 from the latest snapshot per client and group events through it. Server-sourced
-events (hosted /v1/infer, no client_id) fall into a "PEOps hosted" bucket.
+events (hosted /v1/infer, no client_id) fall into a "Astra hosted" bucket.
 """
 
 from __future__ import annotations
@@ -149,9 +149,9 @@ def hardware_breakdown(session: Session, model_id: str, range_str: str = "24h") 
             provider = hw.get("activeProvider") or hw.get("provider", "")
         else:
             # Hosted serving path (CPUExecutionProvider, no SDK snapshot).
-            info = {"deviceClass": "PEOps hosted · CPU", "accelerator": "hosted",
+            info = {"deviceClass": "Astra hosted · CPU", "accelerator": "hosted",
                     "hourlyUsd": _CPU_X86_HOURLY}
-            key = "hosted:PEOps hosted · CPU"
+            key = "hosted:Astra hosted · CPU"
             gpu_name = ""
             provider = "CPUExecutionProvider"
         g = groups.setdefault(key, {

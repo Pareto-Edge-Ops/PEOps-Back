@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Prove the peops-sdk npm package works "from elsewhere":
+# Prove the astra-sdk npm package works "from elsewhere":
 #   build → npm pack → fresh project in /tmp → install the tarball → run from
 #   /tmp (repo can't shadow the import) → local serving + telemetry → assert the
 #   dashboard saw everything (client events, hosts, breakdown, drift alert).
@@ -13,21 +13,21 @@ set -euo pipefail
 BASE_URL="${1:-http://localhost:8100}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PKG="$ROOT/clients/node"
-WORK=/tmp/peops-node-e2e
+WORK=/tmp/astra-node-e2e
 
 echo "── 1. build + pack the npm package"
 ( cd "$PKG" && npm run build >/dev/null 2>&1 && npm pack --pack-destination /tmp >/dev/null )
-TARBALL="$(ls -t /tmp/peops-sdk-*.tgz | head -1)"
+TARBALL="$(ls -t /tmp/astra-sdk-*.tgz | head -1)"
 echo "   $TARBALL"
 
 echo "── 2. fresh project in /tmp + install the tarball + onnxruntime-node"
-rm -rf "$WORK" /tmp/peops-node-cache && mkdir -p "$WORK"
+rm -rf "$WORK" /tmp/astra-node-cache && mkdir -p "$WORK"
 ( cd "$WORK" \
     && npm init -y >/dev/null 2>&1 \
     && npm pkg set type=module >/dev/null 2>&1 \
     && npm install -q "$TARBALL" onnxruntime-node >/dev/null 2>&1 )
-node -e "console.log('   peops-sdk', require('$WORK/node_modules/peops-sdk/package.json').version)"
-# Run the client FROM /tmp so the bare \"peops-sdk\" import resolves to the
+node -e "console.log('   astra-sdk', require('$WORK/node_modules/astra-sdk/package.json').version)"
+# Run the client FROM /tmp so the bare \"astra-sdk\" import resolves to the
 # installed tarball (ESM resolves relative to the importing file's location).
 cp "$ROOT/scripts/_sdk_e2e_client.mjs" "$WORK/client.mjs"
 
@@ -35,8 +35,8 @@ echo "── 3. provision a deployment on the backend ($BASE_URL)"
 python3 "$ROOT/scripts/_sdk_e2e_provision.py" --base "$BASE_URL" --out "$WORK/handoff.json"
 
 echo "── 4. serve locally from /tmp with the installed package"
-( cd "$WORK" && PEOPS_SDK_WINDOW_MAX_REQUESTS=20 PEOPS_SDK_FLUSH_INTERVAL_S=1 \
-    PEOPS_SDK_SNAPSHOT_INTERVAL_S=3 \
+( cd "$WORK" && ASTRA_SDK_WINDOW_MAX_REQUESTS=20 ASTRA_SDK_FLUSH_INTERVAL_S=1 \
+    ASTRA_SDK_SNAPSHOT_INTERVAL_S=3 \
     node "$WORK/client.mjs" --handoff "$WORK/handoff.json" )
 
 echo "── 5. assert the dashboard saw it"

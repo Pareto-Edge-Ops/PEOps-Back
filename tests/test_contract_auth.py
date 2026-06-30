@@ -19,17 +19,17 @@ def _signup(c: TestClient, email: str, name: str = "User", pw: str = "pw-1234567
 
 def test_signup_me_logout_flow(client):
     c = _fresh(client)
-    r = _signup(c, "alice@peops.dev", "Alice")
+    r = _signup(c, "alice@astra.dev", "Alice")
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["email"] == "alice@peops.dev"
+    assert body["email"] == "alice@astra.dev"
     assert body["name"] == "Alice"
     assert body["id"].startswith("u_")
     assert "password" not in body and "password_hash" not in body
 
     me = c.get("/api/auth/me")
     assert me.status_code == 200
-    assert me.json()["email"] == "alice@peops.dev"
+    assert me.json()["email"] == "alice@astra.dev"
 
     assert c.post("/api/auth/logout").status_code == 200
     after = c.get("/api/auth/me")
@@ -39,18 +39,18 @@ def test_signup_me_logout_flow(client):
 
 def test_login_after_signup(client):
     c = _fresh(client)
-    _signup(c, "bob@peops.dev", "Bob")
+    _signup(c, "bob@astra.dev", "Bob")
     c.post("/api/auth/logout")
-    r = c.post("/api/auth/login", json={"email": "bob@peops.dev", "password": "pw-12345678"})
+    r = c.post("/api/auth/login", json={"email": "bob@astra.dev", "password": "pw-12345678"})
     assert r.status_code == 200
-    assert c.get("/api/auth/me").json()["email"] == "bob@peops.dev"
+    assert c.get("/api/auth/me").json()["email"] == "bob@astra.dev"
 
 
 def test_email_is_case_insensitive(client):
     c = _fresh(client)
-    _signup(c, "Carol@Peops.dev", "Carol")
+    _signup(c, "Carol@Astra.dev", "Carol")
     c.post("/api/auth/logout")
-    r = c.post("/api/auth/login", json={"email": "carol@peops.dev", "password": "pw-12345678"})
+    r = c.post("/api/auth/login", json={"email": "carol@astra.dev", "password": "pw-12345678"})
     assert r.status_code == 200
 
 
@@ -58,15 +58,15 @@ def test_email_is_case_insensitive(client):
 
 def test_login_wrong_password_is_structured_401(client):
     c = _fresh(client)
-    _signup(c, "dave@peops.dev", "Dave")
-    r = c.post("/api/auth/login", json={"email": "dave@peops.dev", "password": "wrongwrong"})
+    _signup(c, "dave@astra.dev", "Dave")
+    r = c.post("/api/auth/login", json={"email": "dave@astra.dev", "password": "wrongwrong"})
     assert r.status_code == 401
     assert r.json()["detail"]["code"] == "invalid_credentials"
 
 
 def test_login_unknown_email_same_message(client):
     c = _fresh(client)
-    r = c.post("/api/auth/login", json={"email": "nobody@peops.dev", "password": "whatever1"})
+    r = c.post("/api/auth/login", json={"email": "nobody@astra.dev", "password": "whatever1"})
     assert r.status_code == 401
     # No user enumeration: identical code/message to wrong-password.
     assert r.json()["detail"]["code"] == "invalid_credentials"
@@ -74,9 +74,9 @@ def test_login_unknown_email_same_message(client):
 
 def test_duplicate_email_409(client):
     c = _fresh(client)
-    assert _signup(c, "erin@peops.dev").status_code == 200
+    assert _signup(c, "erin@astra.dev").status_code == 200
     c2 = _fresh(client)
-    r = _signup(c2, "erin@peops.dev")
+    r = _signup(c2, "erin@astra.dev")
     assert r.status_code == 409
     assert r.json()["detail"]["code"] == "email_taken"
 
@@ -84,7 +84,7 @@ def test_duplicate_email_409(client):
 def test_weak_password_400(client):
     c = _fresh(client)
     r = c.post("/api/auth/signup",
-               json={"email": "frank@peops.dev", "password": "short", "name": "Frank"})
+               json={"email": "frank@astra.dev", "password": "short", "name": "Frank"})
     assert r.status_code == 400
     assert r.json()["detail"]["code"] == "weak_password"
 
@@ -116,9 +116,9 @@ def test_healthz_is_public(client):
 
 def test_user_isolation(client):
     a = _fresh(client)
-    _signup(a, "owner@peops.dev", "Owner")
+    _signup(a, "owner@astra.dev", "Owner")
     b = _fresh(client)
-    _signup(b, "intruder@peops.dev", "Intruder")
+    _signup(b, "intruder@astra.dev", "Intruder")
 
     imp = a.post("/api/models/import", json={"fileName": "iso-test.onnx"})
     assert imp.status_code == 200

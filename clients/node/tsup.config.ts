@@ -1,6 +1,6 @@
 import { defineConfig } from "tsup";
 
-// Two entries: the library (index) and the `peops` CLI. The CLI keeps its
+// Two entries: the library (index) and the `astra` CLI. The CLI keeps its
 // `#!/usr/bin/env node` shebang from src/cli.ts (esbuild preserves the entry
 // shebang), so no banner is needed. ESM-only — the repo is ESM and the SDK
 // relies on dynamic `import()` of the optional onnxruntime-node dependency.

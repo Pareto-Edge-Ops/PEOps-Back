@@ -1,4 +1,4 @@
-"""Application settings — all configurable via PEOPS_* environment variables."""
+"""Application settings — all configurable via ASTRA_* environment variables."""
 
 from __future__ import annotations
 
@@ -9,14 +9,14 @@ from urllib.parse import urlparse
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-logger = logging.getLogger("peops")
+logger = logging.getLogger("astra")
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="PEOPS_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="ASTRA_", env_file=".env", extra="ignore")
 
     # --- persistence ---
-    db_path: str = "peops.db"
+    db_path: str = "astra.db"
     # When set (e.g. postgresql://user:pass@host/db) this wins over the SQLite
     # db_path. Tests/local-dev leave it empty → SQLite.
     database_url: str | None = None
@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     # --- object storage ---
     storage_backend: str = "local"        # local | s3
     s3_endpoint_url: str | None = None     # set for MinIO; None → real AWS
-    s3_bucket: str = "peops-artifacts"
+    s3_bucket: str = "astra-artifacts"
     s3_region: str = "us-east-1"
     s3_access_key: str | None = None
     s3_secret_key: str | None = None
@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     # Run pipelines synchronously in-process instead of enqueuing to Redis.
     # Tests & single-box local dev set this so no broker/worker is needed.
     inline_jobs: bool = False
-    work_dir: str = "/tmp/peops-work"      # worker scratch (engine stages here)
+    work_dir: str = "/tmp/astra-work"      # worker scratch (engine stages here)
 
     # --- server ---
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
@@ -122,7 +122,7 @@ class Settings(BaseSettings):
     # the process start time is used (stable within one server process).
     ref_date: str | None = None
 
-    # --- real compression pipeline (peops) ---
+    # --- real compression pipeline (astra) ---
     fast_pipeline: bool = False           # tiny model + few trials (tests/CI)
     # The Pareto search optimizes two DETERMINISTIC objectives (accuracy ↑,
     # size ↓); latency is measured per trial for reporting but kept out of the
@@ -132,7 +132,7 @@ class Settings(BaseSettings):
     # fixed guess: n = clamp(per_dim·D + startup, min, max). Empirically the
     # frontier converges by ~140 trials even at D~24 and <10 for trivial models,
     # so 150 stays the ceiling while simple models run far fewer trials.
-    pareto_adaptive: bool = True          # PEOPS_PARETO_ADAPTIVE=0 → fixed budget
+    pareto_adaptive: bool = True          # ASTRA_PARETO_ADAPTIVE=0 → fixed budget
     pareto_trials: int = 150              # ceiling (also the fixed count if !adaptive)
     pareto_trials_per_dim: int = 10       # trials added per live search dimension
     pareto_startup_trials: int = 10       # constant budget term (TPE random startup)
@@ -151,7 +151,7 @@ class Settings(BaseSettings):
     # pooled-probe OFS >= tau gate (the configuration validated in the paper
     # experiments). A Pareto candidate is served only when it passes the same
     # gate AND is smaller than the ladder's certified candidate.
-    guarantee_mode: bool = True           # PEOPS_GUARANTEE_MODE=0 to disable
+    guarantee_mode: bool = True           # ASTRA_GUARANTEE_MODE=0 to disable
     tau: float = 0.95                     # fidelity floor for the gate
     # Per-trial Pareto export: refuse to materialize artifacts for source
     # models larger than this (transform memory is ~2x model size).
@@ -193,9 +193,9 @@ class Settings(BaseSettings):
 
     @property
     def effective_google_redirect_uri(self) -> str:
-        """OAuth callback URL. Prefers an explicit PEOPS_GOOGLE_REDIRECT_URI;
+        """OAuth callback URL. Prefers an explicit ASTRA_GOOGLE_REDIRECT_URI;
         otherwise derives it from public_origin so a production deploy only has
-        to set PEOPS_PUBLIC_ORIGIN. Falls back to the localhost dev default."""
+        to set ASTRA_PUBLIC_ORIGIN. Falls back to the localhost dev default."""
         if self.google_redirect_uri:
             return self.google_redirect_uri
         if self.public_origin:
@@ -208,17 +208,17 @@ class Settings(BaseSettings):
         warnings: list[str] = []
         if self.jwt_secret == "dev-insecure-change-me":
             warnings.append(
-                "PEOPS_JWT_SECRET is the insecure default — set a strong secret in production."
+                "ASTRA_JWT_SECRET is the insecure default — set a strong secret in production."
             )
         if bool(self.google_client_id) != bool(self.google_client_secret):
             warnings.append(
-                "Google OAuth is half-configured — set BOTH PEOPS_GOOGLE_CLIENT_ID and "
-                "PEOPS_GOOGLE_CLIENT_SECRET (or neither). Google sign-in stays disabled."
+                "Google OAuth is half-configured — set BOTH ASTRA_GOOGLE_CLIENT_ID and "
+                "ASTRA_GOOGLE_CLIENT_SECRET (or neither). Google sign-in stays disabled."
             )
         if bool(self.feedback_github_token) != bool(self.feedback_github_repo):
             warnings.append(
-                "Feedback→GitHub is half-configured — set BOTH PEOPS_FEEDBACK_GITHUB_TOKEN "
-                "and PEOPS_FEEDBACK_GITHUB_REPO (or neither). Feedback is still stored in "
+                "Feedback→GitHub is half-configured — set BOTH ASTRA_FEEDBACK_GITHUB_TOKEN "
+                "and ASTRA_FEEDBACK_GITHUB_REPO (or neither). Feedback is still stored in "
                 "the DB; no issue is opened."
             )
         # An HTTPS public origin must serve a Secure session cookie; otherwise the
@@ -226,8 +226,8 @@ class Settings(BaseSettings):
         if (self.public_origin and self.public_origin.startswith("https://")
                 and not self.cookie_secure):
             warnings.append(
-                "PEOPS_PUBLIC_ORIGIN is HTTPS but PEOPS_COOKIE_SECURE=0 — the session "
-                "cookie will lack the Secure attribute. Set PEOPS_COOKIE_SECURE=1 in production."
+                "ASTRA_PUBLIC_ORIGIN is HTTPS but ASTRA_COOKIE_SECURE=0 — the session "
+                "cookie will lack the Secure attribute. Set ASTRA_COOKIE_SECURE=1 in production."
             )
         # The OAuth callback must live on the public origin, or Google redirects
         # users to an unreachable host (e.g. a leftover localhost dev value).
@@ -236,17 +236,17 @@ class Settings(BaseSettings):
             got = urlparse(self.effective_google_redirect_uri).netloc
             if want and got and want != got:
                 warnings.append(
-                    f"PEOPS_GOOGLE_REDIRECT_URI host ({got}) does not match "
-                    f"PEOPS_PUBLIC_ORIGIN host ({want}) — Google sign-in would redirect "
-                    "users to the wrong host. Unset PEOPS_GOOGLE_REDIRECT_URI to derive it "
-                    "from PEOPS_PUBLIC_ORIGIN, or set it to the public callback URL."
+                    f"ASTRA_GOOGLE_REDIRECT_URI host ({got}) does not match "
+                    f"ASTRA_PUBLIC_ORIGIN host ({want}) — Google sign-in would redirect "
+                    "users to the wrong host. Unset ASTRA_GOOGLE_REDIRECT_URI to derive it "
+                    "from ASTRA_PUBLIC_ORIGIN, or set it to the public callback URL."
                 )
         if self.storage_backend == "s3":
             missing = [
                 name for name, val in (
-                    ("PEOPS_S3_BUCKET", self.s3_bucket),
-                    ("PEOPS_S3_ACCESS_KEY", self.s3_access_key),
-                    ("PEOPS_S3_SECRET_KEY", self.s3_secret_key),
+                    ("ASTRA_S3_BUCKET", self.s3_bucket),
+                    ("ASTRA_S3_ACCESS_KEY", self.s3_access_key),
+                    ("ASTRA_S3_SECRET_KEY", self.s3_secret_key),
                 ) if not val
             ]
             if missing:
@@ -275,7 +275,7 @@ def ref_now() -> datetime:
     """The reference 'now' for every generated timestamp.
 
     Defaults to process start so repeated requests are byte-identical within a
-    server lifetime; pin PEOPS_REF_DATE for cross-process determinism.
+    server lifetime; pin ASTRA_REF_DATE for cross-process determinism.
     """
     s = get_settings()
     if s.ref_date:

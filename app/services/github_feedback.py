@@ -1,8 +1,8 @@
 """In-app feedback → GitHub Issues bridge.
 
 A single side-effect function the feedback router schedules as a background task.
-It is a no-op (the DB row stays the record) when PEOPS_FEEDBACK_GITHUB_TOKEN /
-PEOPS_FEEDBACK_GITHUB_REPO are unset; otherwise it opens an issue in the target
+It is a no-op (the DB row stays the record) when ASTRA_FEEDBACK_GITHUB_TOKEN /
+ASTRA_FEEDBACK_GITHUB_REPO are unset; otherwise it opens an issue in the target
 repo (recommend a PRIVATE repo) and records the issue number/url back on the
 feedback row. Reuses the app's existing httpx dependency — same shape as
 app/auth/google.py.
@@ -18,7 +18,7 @@ from app.config import get_settings
 from app.db import open_session
 from app.dbmodels import FeedbackRow
 
-log = logging.getLogger("peops")
+log = logging.getLogger("astra")
 
 _GITHUB_API = "https://api.github.com"
 # Kind → extra label (always alongside the base "feedback" label). GitHub's
@@ -47,7 +47,7 @@ def _issue_payload(row: FeedbackRow, base_url: str | None = None) -> dict:
     )
     # The attachment is served behind the app's session gate, so GitHub can't
     # proxy-render it inline (`![]()` would 401). Link to it instead — a developer
-    # signed into PEOps in the same browser can open it.
+    # signed into Astra in the same browser can open it.
     if row.attachment_key and base_url:
         url = f"{base_url}/api/feedback/{row.id}/attachment"
         body += f"- **Attachment:** [{row.attachment_name or 'screenshot'}]({url})\n"

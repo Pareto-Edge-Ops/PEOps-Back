@@ -1,4 +1,4 @@
-"""Request schemas for the client-telemetry batch endpoint (peops-sdk)."""
+"""Request schemas for the client-telemetry batch endpoint (astra-sdk)."""
 
 from __future__ import annotations
 

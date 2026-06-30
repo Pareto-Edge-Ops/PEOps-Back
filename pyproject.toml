@@ -1,7 +1,7 @@
 [project]
-name = "peops-back"
+name = "astra-back"
 version = "0.1.0"
-description = "PEOps backend — Sensitivity-Guided Pareto Search + Surrogate Model + Telemetry Closed-Loop API server"
+description = "Astra backend — Sensitivity-Guided Pareto Search + Surrogate Model + Telemetry Closed-Loop API server"
 requires-python = ">=3.10"
 dependencies = [
     "fastapi>=0.110",
@@ -20,8 +20,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Real compression engine — the `peops` package is VENDORED into this repo
-# (top-level `peops/`, installed together with `app/` via the build below), so
+# Real compression engine — the `astra` package is VENDORED into this repo
+# (top-level `astra/`, installed together with `app/` via the build below), so
 # no separate install is needed. This extra only pulls the engine's third-party
 # runtime deps. `skl2onnx` is a lazy import (sklearn-pickle ingestion path only);
 # the engine never imports xgboost/onnxmltools, so they are intentionally omitted.
@@ -82,8 +82,8 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-# `app*` is the backend; `peops*` is the vendored compression engine.
-include = ["app*", "peops*"]
+# `app*` is the backend; `astra*` is the vendored compression engine.
+include = ["app*", "astra*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -92,10 +92,10 @@ addopts = "-q"
 [tool.ruff]
 line-length = 100
 target-version = "py310"
-src = ["app", "peops"]
+src = ["app", "astra"]
 # Vendored engine and generated migrations are not linted here — they follow
 # their own upstream style and churning them would obscure real diffs.
-extend-exclude = ["peops", "migrations"]
+extend-exclude = ["astra", "migrations"]
 
 [tool.ruff.lint]
 # A pragmatic baseline for this hand-written FastAPI codebase: pyflakes (real
@@ -119,11 +119,11 @@ python_version = "3.10"
 ignore_missing_imports = true
 # Scope type-checking to the application; vendored/generated code is excluded.
 files = ["app"]
-exclude = ["peops/", "migrations/", "tests/"]
+exclude = ["astra/", "migrations/", "tests/"]
 disallow_untyped_defs = false
 warn_unused_ignores = false
 
 # The vendored engine is followed via imports but is not ours to type-check.
 [[tool.mypy.overrides]]
-module = "peops.*"
+module = "astra.*"
 ignore_errors = true

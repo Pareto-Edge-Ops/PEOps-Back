@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// peops CLI — pull / serve / bench a PEOps deployment locally.
-// Mirrors clients/python/peops_sdk/cli.py. stdlib-only (node:util + node:http);
+// astra CLI — pull / serve / bench a Astra deployment locally.
+// Mirrors clients/python/astra_sdk/cli.py. stdlib-only (node:util + node:http);
 // the heavy lifting lives in LocalRunner.
 //
-//     peops pull  --base-url URL --deployment dep_x --api-key KEY
-//     peops serve --base-url URL --deployment dep_x --api-key KEY --port 8765
-//     peops bench --base-url URL --deployment dep_x --api-key KEY -n 200
+//     astra pull  --base-url URL --deployment dep_x --api-key KEY
+//     astra serve --base-url URL --deployment dep_x --api-key KEY --port 8765
+//     astra bench --base-url URL --deployment dep_x --api-key KEY -n 200
 
 import { createServer } from "node:http";
 import { parseArgs } from "node:util";
@@ -20,7 +20,7 @@ const { values, positionals } = parseArgs({
     "base-url": { type: "string" },
     deployment: { type: "string" },
     "api-key": { type: "string" },
-    "cache-dir": { type: "string", default: "~/.cache/peops" },
+    "cache-dir": { type: "string", default: "~/.cache/astra" },
     port: { type: "string", default: "8765" },
     n: { type: "string", short: "n", default: "200" },
   },
@@ -28,9 +28,9 @@ const { values, positionals } = parseArgs({
 
 async function main(): Promise<number> {
   const cmd = positionals[0];
-  const baseUrl = values["base-url"] ?? process.env.PEOPS_BASE_URL;
-  const deployment = values.deployment ?? process.env.PEOPS_DEPLOYMENT_ID;
-  const apiKey = values["api-key"] ?? process.env.PEOPS_API_KEY;
+  const baseUrl = values["base-url"] ?? process.env.ASTRA_BASE_URL;
+  const deployment = values.deployment ?? process.env.ASTRA_DEPLOYMENT_ID;
+  const apiKey = values["api-key"] ?? process.env.ASTRA_API_KEY;
   const cacheDir = values["cache-dir"]!;
 
   const require = (): void => {
@@ -128,7 +128,7 @@ async function main(): Promise<number> {
       server.listen(port, "127.0.0.1", () => {
         console.log(
           `serving ${deployment} on http://127.0.0.1:${port}/infer ` +
-            `(Ctrl-C to stop; telemetry → the PEOps dashboard)`,
+            `(Ctrl-C to stop; telemetry → the Astra dashboard)`,
         );
       });
       const shutdown = async (): Promise<void> => {
@@ -144,9 +144,9 @@ async function main(): Promise<number> {
 
     default:
       console.error(
-        "usage: peops <pull|serve|bench> --deployment dep_x --api-key KEY " +
+        "usage: astra <pull|serve|bench> --deployment dep_x --api-key KEY " +
           "[--base-url URL] [--port 8765] [-n 200]\n" +
-          "(options also read from PEOPS_BASE_URL / PEOPS_DEPLOYMENT_ID / PEOPS_API_KEY)",
+          "(options also read from ASTRA_BASE_URL / ASTRA_DEPLOYMENT_ID / ASTRA_API_KEY)",
       );
       return 1;
   }

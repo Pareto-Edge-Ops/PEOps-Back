@@ -64,7 +64,7 @@ def test_google_login_redirects_to_google(client, monkeypatch):
     assert "openid" in q["scope"][0] and "email" in q["scope"][0]
     assert q["state"][0]
     # state cookie is set for CSRF protection on the callback
-    assert "peops_oauth_state" in r.cookies
+    assert "astra_oauth_state" in r.cookies
 
 
 def test_google_login_disabled_redirects_with_error(client):
@@ -83,18 +83,18 @@ def _login_state(c: TestClient) -> str:
 
 def test_google_callback_creates_user_and_session(client, monkeypatch):
     _enable_google(monkeypatch)
-    _mock_google(monkeypatch, sub="g-sub-001", email="newgoogle@peops.dev", name="Google User")
+    _mock_google(monkeypatch, sub="g-sub-001", email="newgoogle@astra.dev", name="Google User")
     c = _no_follow(client)
     state = _login_state(c)  # also sets the state cookie in c's jar
 
     r = c.get(f"/api/auth/google/callback?code=auth-code&state={state}")
     assert r.status_code == 302
     assert r.headers["location"] == "/dashboard"
-    assert "peops_session" in r.cookies
+    assert "astra_session" in r.cookies
 
     # Follow-up: the session cookie authenticates /me as the new Google user.
     me = c.get("/api/auth/me").json()
-    assert me["email"] == "newgoogle@peops.dev"
+    assert me["email"] == "newgoogle@astra.dev"
     assert me["authProvider"] == "google"
 
 
@@ -102,12 +102,12 @@ def test_google_callback_links_existing_email(client, monkeypatch):
     # A password account exists first…
     pw = TestClient(client.app)
     pw.post("/api/auth/signup", json={
-        "email": "linkme@peops.dev", "password": "pw-12345678", "name": "Linker"})
+        "email": "linkme@astra.dev", "password": "pw-12345678", "name": "Linker"})
     id_pw = pw.get("/api/auth/me").json()["id"]
 
     # …then the same person signs in with Google (same verified email) → same account.
     _enable_google(monkeypatch)
-    _mock_google(monkeypatch, sub="g-sub-link", email="linkme@peops.dev", name="Linker")
+    _mock_google(monkeypatch, sub="g-sub-link", email="linkme@astra.dev", name="Linker")
     c = _no_follow(client)
     state = _login_state(c)
     r = c.get(f"/api/auth/google/callback?code=x&state={state}")
@@ -118,7 +118,7 @@ def test_google_callback_links_existing_email(client, monkeypatch):
 
 def test_google_callback_state_mismatch_rejected(client, monkeypatch):
     _enable_google(monkeypatch)
-    _mock_google(monkeypatch, sub="g-sub-x", email="x@peops.dev", name="X")
+    _mock_google(monkeypatch, sub="g-sub-x", email="x@astra.dev", name="X")
     c = _no_follow(client)
     _login_state(c)  # sets a state cookie
     r = c.get("/api/auth/google/callback?code=x&state=WRONG-STATE")
@@ -128,7 +128,7 @@ def test_google_callback_state_mismatch_rejected(client, monkeypatch):
 
 def test_google_callback_unverified_email_rejected(client, monkeypatch):
     _enable_google(monkeypatch)
-    _mock_google(monkeypatch, sub="g-sub-unv", email="unv@peops.dev", name="Unv",
+    _mock_google(monkeypatch, sub="g-sub-unv", email="unv@astra.dev", name="Unv",
                  verified=False)
     c = _no_follow(client)
     state = _login_state(c)
@@ -153,13 +153,13 @@ def test_verify_id_token_is_graceful_on_bad_token(monkeypatch):
 
 def test_google_only_account_cannot_password_login(client, monkeypatch):
     _enable_google(monkeypatch)
-    _mock_google(monkeypatch, sub="g-sub-only", email="googleonly@peops.dev", name="GO")
+    _mock_google(monkeypatch, sub="g-sub-only", email="googleonly@astra.dev", name="GO")
     c = _no_follow(client)
     state = _login_state(c)
     c.get(f"/api/auth/google/callback?code=x&state={state}")  # creates google-only user
 
     # Password login for a google-only account must fail (no password hash).
     r = client.post("/api/auth/login",
-                    json={"email": "googleonly@peops.dev", "password": "anything-123"})
+                    json={"email": "googleonly@astra.dev", "password": "anything-123"})
     assert r.status_code == 401
     assert r.json()["detail"]["code"] == "invalid_credentials"

@@ -3,7 +3,7 @@ time-series, enriched fleet inventory, and the cost/efficiency lens.
 
 The fleet simulator injects a believable multi-accelerator serving fleet (A10G,
 T4, Apple CoreML, hosted x86 CPU) so these views have data on a box without a
-GPU; the aggregation treats those rows exactly like real peops-sdk telemetry.
+GPU; the aggregation treats those rows exactly like real astra-sdk telemetry.
 """
 
 from __future__ import annotations

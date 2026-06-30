@@ -12,7 +12,7 @@ from app.config import iso
 from app.dbmodels import DeploymentRow, IngestionRunRow, ModelRow, ResultCacheRow
 from app.schemas.models import ModelListItem
 
-log = logging.getLogger("peops")
+log = logging.getLogger("astra")
 
 # Deployment statuses that actively route traffic. A model is "serving" iff it
 # has ≥1 deployment in one of these; an all-"paused" model is deployed but not

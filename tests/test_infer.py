@@ -36,7 +36,7 @@ def test_infer_auth_failures(make_live_model, deploy_model, client):
     assert client.post(f"/api/v1/infer/{dep_id}", json={"inputs": None}).status_code == 401
     bad = client.post(
         f"/api/v1/infer/{dep_id}", json={"inputs": None},
-        headers={"Authorization": "Bearer peops_sk_live_deadbeef"},
+        headers={"Authorization": "Bearer astra_sk_live_deadbeef"},
     )
     assert bad.status_code == 401
 

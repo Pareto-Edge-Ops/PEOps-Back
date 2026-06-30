@@ -1,4 +1,4 @@
-"""Mirrors PEOps-Front/src/features/dashboard/types.ts."""
+"""Mirrors Astra-Front/src/features/dashboard/types.ts."""
 
 from __future__ import annotations
 
@@ -14,9 +14,9 @@ class KpiBlock(BaseModel):
 
 
 class SizeReduced(BaseModel):
-    """Headline value of PEOps: how much smaller the portfolio's optimized
+    """Headline value of Astra: how much smaller the portfolio's optimized
     artifacts are than their originals. Replaces the borrowed "compute used"
-    quota metric (PEOps sells compression, not GPU spend)."""
+    quota metric (Astra sells compression, not GPU spend)."""
 
     bytesSaved: float          # Σ (baseline − compressed) over models with a ratio
     avgReductionX: float       # mean × smaller (1 / sizeRatio)
@@ -92,7 +92,7 @@ class GuaranteeSegment(BaseModel):
 
 
 class GuaranteeCoverage(BaseModel):
-    """PEOps's unique promise made legible: how many optimized models carry a
+    """Astra's unique promise made legible: how many optimized models carry a
     fidelity guarantee, and where on the ladder they landed."""
 
     certifiedCount: int        # models that cleared a guarantee gate

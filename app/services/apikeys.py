@@ -16,7 +16,7 @@ from sqlmodel import Session, select
 from app.config import iso
 from app.dbmodels import ApiKeyRow
 
-KEY_PREFIX = "peops_sk_live_"
+KEY_PREFIX = "astra_sk_live_"
 
 
 def hash_key(plaintext: str) -> str:
@@ -24,7 +24,7 @@ def hash_key(plaintext: str) -> str:
 
 
 def _display(plaintext: str) -> str:
-    """Masked form for the UI: peops_sk_live_3i7c…b71c."""
+    """Masked form for the UI: astra_sk_live_3i7c…b71c."""
     head = KEY_PREFIX + plaintext[len(KEY_PREFIX):len(KEY_PREFIX) + 4]
     return f"{head}…{plaintext[-4:]}"
 

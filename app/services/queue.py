@@ -46,7 +46,7 @@ def _run_inline(payload: dict) -> None:
             finally:
                 clear_cancel(run_id)
 
-    threading.Thread(target=_target, daemon=True, name=f"peops-inline-{run_id}").start()
+    threading.Thread(target=_target, daemon=True, name=f"astra-inline-{run_id}").start()
 
 
 # ── arq (Redis) dispatch ──────────────────────────────────────────────────────
@@ -155,10 +155,10 @@ async def _worker_startup(ctx: dict) -> None:
         with open_session() as session:
             reaped = reconcile_orphaned_runs(session, get_settings().job_timeout_sec + 300)
         if reaped:
-            logging.getLogger("peops").warning(
+            logging.getLogger("astra").warning(
                 "worker-startup orphaned-run reaper: failed %d run(s): %s", len(reaped), reaped)
     except Exception:  # noqa: BLE001 — reaper must never block worker startup
-        logging.getLogger("peops").exception("worker-startup reaper failed")
+        logging.getLogger("astra").exception("worker-startup reaper failed")
 
 
 def _cron_jobs():

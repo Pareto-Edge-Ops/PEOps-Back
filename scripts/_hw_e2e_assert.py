@@ -2,7 +2,7 @@
 """Assert the dashboard reflects the hardware-aware telemetry closed loop.
 
 Two phases:
-  A. REAL serve — the separate `peops serve` process reported genuine telemetry
+  A. REAL serve — the separate `astra serve` process reported genuine telemetry
      from THIS host, so the dashboard must show live client traffic, snapshots
      carrying real hardware identity (CPU model/cores/RAM + the bound ORT
      provider), a per-hardware group, and a CPU/memory resource series.
@@ -46,7 +46,7 @@ def main() -> None:
         return r.json()
 
     # ── Phase A: the REAL separate-server telemetry ───────────────────────────
-    print("Phase A — real `peops serve` telemetry (this host)")
+    print("Phase A — real `astra serve` telemetry (this host)")
     meta = get(f"/api/models/{mid}/telemetry/meta")
     check("telemetry source is live", meta.get("source") == "live", meta.get("source"))
     check("client-sourced events ingested",

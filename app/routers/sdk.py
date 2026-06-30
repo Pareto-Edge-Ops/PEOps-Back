@@ -26,13 +26,13 @@ router = APIRouter(prefix="/sdk", tags=["sdk"])
 
 @lru_cache(maxsize=1)
 def _sdk_version() -> str:
-    """Real peops-sdk client version. Source of truth, in order: the installed
-    `peops_sdk` package, then the vendored client's pyproject, then a constant.
+    """Real astra-sdk client version. Source of truth, in order: the installed
+    `astra_sdk` package, then the vendored client's pyproject, then a constant.
     Keeps the SDK Hub version chip honest instead of a hardcoded string."""
     try:
-        import peops_sdk  # type: ignore[import-not-found]
+        import astra_sdk  # type: ignore[import-not-found]
 
-        version = getattr(peops_sdk, "__version__", None)
+        version = getattr(astra_sdk, "__version__", None)
         if version:
             return str(version)
     except Exception:  # noqa: BLE001 — package may not be on the backend path

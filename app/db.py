@@ -1,6 +1,6 @@
 """Database engine + session helpers — SQLite (dev/tests) or PostgreSQL (prod).
 
-The dialect is chosen from PEOPS_DATABASE_URL (Postgres) or PEOPS_DB_PATH
+The dialect is chosen from ASTRA_DATABASE_URL (Postgres) or ASTRA_DB_PATH
 (SQLite fallback). SQLite-only tuning (WAL pragma, check_same_thread) is guarded
 by dialect; Postgres gets a real connection pool for many API/worker processes.
 """
@@ -59,7 +59,7 @@ def get_engine():
 
 
 def reset_engine() -> None:
-    """Dispose the cached engine (tests swap PEOPS_DB_PATH between runs)."""
+    """Dispose the cached engine (tests swap ASTRA_DB_PATH between runs)."""
     global _engine
     if _engine is not None:
         _engine.dispose()

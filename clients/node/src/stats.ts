@@ -1,11 +1,11 @@
 // Windowed input/output distribution statistics.
-// Mirrors clients/python/peops_sdk/stats.py (numpy-free).
+// Mirrors clients/python/astra_sdk/stats.py (numpy-free).
 //
 // A bounded reservoir of requests per window is reduced to compact stats:
 // per-input tensor mean/std/min/max/NaN%, and — when the output looks
 // classifier-shaped ([B, C], 1 < C <= 10000) — the argmax class distribution,
 // a 16-bin top-1 confidence histogram, mean entropy and mean top-1 confidence.
-// These windows are what the PEOps drift monitor compares against a deployment's
+// These windows are what the Astra drift monitor compares against a deployment's
 // reference to raise prediction/input drift alerts.
 
 const RESERVOIR = 32;

@@ -18,8 +18,8 @@ import onnx
 import onnxruntime as ort
 from onnx import numpy_helper
 
-from peops.core.calibration_generator import CalibrationGenerator
-from peops.graph.model_detector import ArchitectureType
+from astra.core.calibration_generator import CalibrationGenerator
+from astra.graph.model_detector import ArchitectureType
 
 
 @dataclass

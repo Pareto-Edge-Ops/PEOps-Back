@@ -19,7 +19,7 @@ import onnx
 import onnxruntime as ort
 from onnx import TensorProto
 
-from peops.graph.onnx_analyzer import GraphInfo, OperatorCategory, OperatorInfo
+from astra.graph.onnx_analyzer import GraphInfo, OperatorCategory, OperatorInfo
 
 
 @dataclass
@@ -484,7 +484,7 @@ def compute_uosa(
     seed: int = 42,
 ) -> SensitivityProfile:
     """Convenience function to compute UOSA sensitivity for an ONNX model."""
-    from peops.graph.onnx_analyzer import OnnxAnalyzer
+    from astra.graph.onnx_analyzer import OnnxAnalyzer
 
     if isinstance(model_or_path, str):
         model = onnx.load(model_or_path)

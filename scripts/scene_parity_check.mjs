@@ -12,7 +12,7 @@
  *
  * Usage:
  *   node scripts/scene_parity_check.mjs [--base http://localhost:8000] \
- *        [--front ../PEOps-Front] [--model-id m_uploaded_xxx]
+ *        [--front ../Astra-Front] [--model-id m_uploaded_xxx]
  */
 
 import { createRequire } from "node:module";
@@ -27,7 +27,7 @@ const args = Object.fromEntries(
   }, []),
 );
 const BASE = args.base ?? "http://localhost:8000";
-const FRONT = path.resolve(args.front ?? "../PEOps-Front");
+const FRONT = path.resolve(args.front ?? "../Astra-Front");
 
 const frontRequire = createRequire(path.join(FRONT, "package.json"));
 let vitePath;
@@ -90,7 +90,7 @@ async function afetch(url, opts = {}) {
   return res;
 }
 async function signup() {
-  const email = `scene_${Date.now()}@peops.dev`;
+  const email = `scene_${Date.now()}@astra.dev`;
   const r = await afetch(`${BASE}/api/auth/signup`, {
     method: "POST",
     headers: { "content-type": "application/json" },

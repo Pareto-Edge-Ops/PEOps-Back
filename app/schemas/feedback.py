@@ -1,4 +1,4 @@
-"""In-app feedback / feature-request DTOs (mirrors PEOps-Front/src/features/feedback)."""
+"""In-app feedback / feature-request DTOs (mirrors Astra-Front/src/features/feedback)."""
 
 from __future__ import annotations
 

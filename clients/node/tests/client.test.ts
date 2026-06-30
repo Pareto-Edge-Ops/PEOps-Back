@@ -1,17 +1,17 @@
 import { describe, expect, it } from "vitest";
 
 import { ApiError, HttpSession } from "../src/http.js";
-import { InferenceError, PeopsClient } from "../src/client.js";
+import { InferenceError, AstraClient } from "../src/client.js";
 import { installFetch } from "./_mock.js";
 
-describe("PeopsClient", () => {
+describe("AstraClient", () => {
   it("infer happy path hits the deployment URL with bearer auth", async () => {
     const { calls } = installFetch((req) => {
       expect(req.path).toBe("/api/v1/infer/dep_x");
       expect(req.headers["authorization"]).toBe("Bearer k");
       return { json: { latencyMs: 1.2, outputs: [] } };
     });
-    const client = new PeopsClient("dep_x", "k", { baseUrl: "http://t" });
+    const client = new AstraClient("dep_x", "k", { baseUrl: "http://t" });
     const out = await client.infer({ input: [[1.0]] });
     expect(out.latencyMs).toBe(1.2);
     expect(calls).toHaveLength(1);
@@ -23,7 +23,7 @@ describe("PeopsClient", () => {
       status: 404,
       json: { detail: { code: "deployment_not_found", message: "nope" } },
     }));
-    const client = new PeopsClient("dep_x", "k", { baseUrl: "http://t" });
+    const client = new AstraClient("dep_x", "k", { baseUrl: "http://t" });
     await expect(client.infer()).rejects.toMatchObject({
       name: "InferenceError",
       code: "deployment_not_found",

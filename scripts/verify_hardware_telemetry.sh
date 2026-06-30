@@ -2,7 +2,7 @@
 # Real, end-to-end proof of the HARDWARE-AWARE telemetry closed loop:
 #
 #   boot backend → build wheel → fresh venv (repo can't shadow the import) →
-#   deploy a model → `peops serve` it on a SEPARATE Python HTTP server (:8765) →
+#   deploy a model → `astra serve` it on a SEPARATE Python HTTP server (:8765) →
 #   drive REAL HTTP inference at that server → assert the dashboard shows live
 #   per-hardware speed + resource utilization with genuine hardware identity →
 #   inject a multi-accelerator fleet → assert the GPU views light up.
@@ -15,10 +15,10 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PORT=8122
 SERVE_PORT=8765
 BASE_URL="http://127.0.0.1:${PORT}"
-DIST=/tmp/peops-hw-dist
-VENV=/tmp/peops-hw-venv
-WORK=/tmp/peops-hw-e2e
-RUNDIR=/tmp/peops-hw-run
+DIST=/tmp/astra-hw-dist
+VENV=/tmp/astra-hw-venv
+WORK=/tmp/astra-hw-e2e
+RUNDIR=/tmp/astra-hw-run
 
 BACKEND_PID=""
 SERVE_PID=""
@@ -33,12 +33,12 @@ trap cleanup EXIT
 echo "── 1. boot backend ($BASE_URL) with sim + inline monitor + fast pipeline"
 rm -rf "$RUNDIR" && mkdir -p "$RUNDIR"
 # `exec` so $! is the real python PID (not a wrapping subshell) — the cleanup
-# trap then signals uvicorn/peops directly instead of orphaning their children.
+# trap then signals uvicorn/astra directly instead of orphaning their children.
 ( cd "$ROOT" && exec env \
-  PEOPS_DB_PATH="$RUNDIR/db.sqlite" PEOPS_STORAGE_DIR="$RUNDIR/storage" \
-  PEOPS_WORK_DIR="$RUNDIR/work" PEOPS_FAST_PIPELINE=1 PEOPS_INLINE_JOBS=1 \
-  PEOPS_MONITOR_INLINE_ENABLED=1 PEOPS_MONITOR_INTERVAL_SEC=5 \
-  PEOPS_TELEMETRY_SIM_ENABLED=1 PEOPS_COOKIE_SECURE=0 PEOPS_RATE_LIMIT_ENABLED=0 \
+  ASTRA_DB_PATH="$RUNDIR/db.sqlite" ASTRA_STORAGE_DIR="$RUNDIR/storage" \
+  ASTRA_WORK_DIR="$RUNDIR/work" ASTRA_FAST_PIPELINE=1 ASTRA_INLINE_JOBS=1 \
+  ASTRA_MONITOR_INLINE_ENABLED=1 ASTRA_MONITOR_INTERVAL_SEC=5 \
+  ASTRA_TELEMETRY_SIM_ENABLED=1 ASTRA_COOKIE_SECURE=0 ASTRA_RATE_LIMIT_ENABLED=0 \
   python3 -m uvicorn app.main:app --port "$PORT" --log-level warning ) \
   > "$RUNDIR/backend.log" 2>&1 &
 BACKEND_PID=$!
@@ -52,10 +52,10 @@ echo "   backend up (pid $BACKEND_PID)"
 
 echo "── 2. build wheel + fresh venv with [serve]"
 rm -rf "$DIST" && python3 -m build --wheel --outdir "$DIST" "$ROOT/clients/python" > /dev/null
-WHEEL="$(ls "$DIST"/peops_sdk-*.whl)"
+WHEEL="$(ls "$DIST"/astra_sdk-*.whl)"
 rm -rf "$VENV" && python3 -m venv "$VENV"
 "$VENV/bin/pip" install -q "${WHEEL}[serve]"
-echo "   $("$VENV/bin/python" -c 'import peops_sdk,sys; print("peops-sdk", peops_sdk.__version__, "from", peops_sdk.__file__)')"
+echo "   $("$VENV/bin/python" -c 'import astra_sdk,sys; print("astra-sdk", astra_sdk.__version__, "from", astra_sdk.__file__)')"
 
 echo "── 3. provision a deployment"
 rm -rf "$WORK" && mkdir -p "$WORK"
@@ -64,9 +64,9 @@ DEP=$(python3 -c "import json;print(json.load(open('$WORK/handoff.json'))['deplo
 KEY=$(python3 -c "import json;print(json.load(open('$WORK/handoff.json'))['apiKey'])")
 
 echo "── 4. serve it on a SEPARATE Python HTTP server (:$SERVE_PORT) from the venv"
-( cd /tmp && exec env PEOPS_SDK_SNAPSHOT_INTERVAL_S=2 PEOPS_SDK_FLUSH_INTERVAL_S=1 \
-    PEOPS_SDK_WINDOW_MAX_REQUESTS=20 \
-    "$VENV/bin/peops" serve --base-url "$BASE_URL" --deployment "$DEP" \
+( cd /tmp && exec env ASTRA_SDK_SNAPSHOT_INTERVAL_S=2 ASTRA_SDK_FLUSH_INTERVAL_S=1 \
+    ASTRA_SDK_WINDOW_MAX_REQUESTS=20 \
+    "$VENV/bin/astra" serve --base-url "$BASE_URL" --deployment "$DEP" \
     --api-key "$KEY" --port "$SERVE_PORT" ) > "$RUNDIR/serve.log" 2>&1 &
 SERVE_PID=$!
 echo "   serve pid $SERVE_PID — http://127.0.0.1:$SERVE_PORT/infer"

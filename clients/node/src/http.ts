@@ -1,5 +1,5 @@
 // Shared HTTP plumbing: bearer auth, retry with backoff, error mapping.
-// Mirrors clients/python/peops_sdk/_http.py. Uses the global `fetch` (Node 18+)
+// Mirrors clients/python/astra_sdk/_http.py. Uses the global `fetch` (Node 18+)
 // — zero runtime dependencies.
 
 const RETRYABLE_STATUS = new Set([429, 502, 503, 504]);
@@ -15,13 +15,13 @@ export class ApiError extends Error {
   }
 }
 
-// The hosted PEOps origin every deployment lives behind. Baked in so SDK code
-// never has to carry a base URL; override with the PEOPS_BASE_URL env var or an
+// The hosted Astra origin every deployment lives behind. Baked in so SDK code
+// never has to carry a base URL; override with the ASTRA_BASE_URL env var or an
 // explicit baseUrl argument (e.g. for self-host / testing).
-export const DEFAULT_BASE_URL = "https://peops.kwon5700.kr";
+export const DEFAULT_BASE_URL = "https://astra.kwon5700.kr";
 
 export function resolveBaseUrl(baseUrl?: string): string {
-  return (baseUrl || process.env.PEOPS_BASE_URL || DEFAULT_BASE_URL).replace(/\/+$/, "");
+  return (baseUrl || process.env.ASTRA_BASE_URL || DEFAULT_BASE_URL).replace(/\/+$/, "");
 }
 
 const sleep = (ms: number): Promise<void> =>

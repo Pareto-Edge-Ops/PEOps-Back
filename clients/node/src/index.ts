@@ -1,21 +1,21 @@
-// peops-sdk — serve PEOps-compressed models anywhere, with telemetry built in.
+// astra-sdk — serve Astra-compressed models anywhere, with telemetry built in.
 //
 // Hosted inference (zero extra deps):
 //
-//     import { PeopsClient } from "peops-sdk";
-//     const client = new PeopsClient(baseUrl, deploymentId, apiKey);
+//     import { AstraClient } from "astra-sdk";
+//     const client = new AstraClient(baseUrl, deploymentId, apiKey);
 //     const out = await client.infer({ input: [[0.1, 0.2]] });
 //
 // Local serving (npm i onnxruntime-node) — pulls the compressed artifact and
 // runs it on YOUR hardware while the dashboard keeps monitoring it:
 //
-//     import { LocalRunner } from "peops-sdk";
+//     import { LocalRunner } from "astra-sdk";
 //     const runner = await LocalRunner.fromDeployment({ baseUrl, deploymentId, apiKey });
 //     const out = await runner.run({ input: { data: myFloats, dims: [1, 3, 224, 224] } });
 //     await runner.close();
 
 export { ApiError } from "./http.js";
-export { InferenceError, PeopsClient } from "./client.js";
+export { InferenceError, AstraClient } from "./client.js";
 export { LocalRunner, pullArtifact, requireServeExtra, RunnerError } from "./runner.js";
 export { TelemetryReporter, telemetryEnabled } from "./telemetry.js";
 export { VERSION } from "./version.js";

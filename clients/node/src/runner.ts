@@ -1,12 +1,12 @@
-// LocalRunner — serve a PEOps-deployed artifact on your own hardware.
-// Mirrors clients/python/peops_sdk/runner.py.
+// LocalRunner — serve a Astra-deployed artifact on your own hardware.
+// Mirrors clients/python/astra_sdk/runner.py.
 //
-//     import { LocalRunner } from "peops-sdk";
+//     import { LocalRunner } from "astra-sdk";
 //
 //     const runner = await LocalRunner.fromDeployment({
 //       baseUrl: "https://app.example.com",
 //       deploymentId: "dep_ab12cd34ef",
-//       apiKey: "peops_sk_live_…",
+//       apiKey: "astra_sk_live_…",
 //     });
 //     const out = await runner.run({ input: { data: myFloats, dims: [1, 3, 224, 224] } });
 //     await runner.close();
@@ -14,7 +14,7 @@
 // The artifact is pulled once via the API-key-authed
 // GET /api/v1/artifacts/{deployment_id} and cached on disk keyed by its sha256,
 // so restarts don't re-download. Every run() is measured (pre/infer/post) and
-// shipped to the PEOps dashboard by the background TelemetryReporter.
+// shipped to the Astra dashboard by the background TelemetryReporter.
 //
 // Requires onnxruntime-node:  npm i onnxruntime-node
 
@@ -43,7 +43,7 @@ import type {
 import type { RunInput, RunOutput } from "./types.js";
 import type { Sampleable } from "./stats.js";
 
-const DEFAULT_CACHE = "~/.cache/peops";
+const DEFAULT_CACHE = "~/.cache/astra";
 
 export class RunnerError extends Error {
   constructor(message: string) {
@@ -96,7 +96,7 @@ function expandHome(dir: string): string {
 export interface PullArtifactOptions {
   deploymentId: string;
   apiKey: string;
-  /** Optional — defaults to the hosted PEOps origin (or PEOPS_BASE_URL). */
+  /** Optional — defaults to the hosted Astra origin (or ASTRA_BASE_URL). */
   baseUrl?: string;
   cacheDir?: string;
   timeout?: number;
@@ -138,7 +138,7 @@ export async function pullArtifact(opts: PullArtifactOptions): Promise<string> {
 export interface FromDeploymentOptions {
   deploymentId: string;
   apiKey: string;
-  /** Optional — defaults to the hosted PEOps origin (or PEOPS_BASE_URL). */
+  /** Optional — defaults to the hosted Astra origin (or ASTRA_BASE_URL). */
   baseUrl?: string;
   cacheDir?: string;
   reportTelemetry?: boolean;

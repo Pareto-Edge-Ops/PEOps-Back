@@ -7,7 +7,7 @@
 #   measured QPS, a labeled projection, and a reconciling workspace rollup.
 #
 # Lighter than verify_hardware_telemetry.sh — it drives traffic through the gated
-# fleet simulator rather than a separate `peops serve`, so no wheel/venv is built.
+# fleet simulator rather than a separate `astra serve`, so no wheel/venv is built.
 # Self-contained: starts its own backend and tears it down.
 # Usage: scripts/verify_cost_savings.sh
 set -euo pipefail
@@ -15,8 +15,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PORT=8123
 BASE_URL="http://127.0.0.1:${PORT}"
-WORK=/tmp/peops-cost-e2e
-RUNDIR=/tmp/peops-cost-run
+WORK=/tmp/astra-cost-e2e
+RUNDIR=/tmp/astra-cost-run
 
 BACKEND_PID=""
 cleanup() {
@@ -27,10 +27,10 @@ trap cleanup EXIT
 echo "── 1. boot backend ($BASE_URL) with sim + inline monitor + fast pipeline"
 rm -rf "$RUNDIR" && mkdir -p "$RUNDIR"
 ( cd "$ROOT" && exec env \
-  PEOPS_DB_PATH="$RUNDIR/db.sqlite" PEOPS_STORAGE_DIR="$RUNDIR/storage" \
-  PEOPS_WORK_DIR="$RUNDIR/work" PEOPS_FAST_PIPELINE=1 PEOPS_INLINE_JOBS=1 \
-  PEOPS_MONITOR_INLINE_ENABLED=1 PEOPS_MONITOR_INTERVAL_SEC=5 \
-  PEOPS_TELEMETRY_SIM_ENABLED=1 PEOPS_COOKIE_SECURE=0 PEOPS_RATE_LIMIT_ENABLED=0 \
+  ASTRA_DB_PATH="$RUNDIR/db.sqlite" ASTRA_STORAGE_DIR="$RUNDIR/storage" \
+  ASTRA_WORK_DIR="$RUNDIR/work" ASTRA_FAST_PIPELINE=1 ASTRA_INLINE_JOBS=1 \
+  ASTRA_MONITOR_INLINE_ENABLED=1 ASTRA_MONITOR_INTERVAL_SEC=5 \
+  ASTRA_TELEMETRY_SIM_ENABLED=1 ASTRA_COOKIE_SECURE=0 ASTRA_RATE_LIMIT_ENABLED=0 \
   python3 -m uvicorn app.main:app --port "$PORT" --log-level warning ) \
   > "$RUNDIR/backend.log" 2>&1 &
 BACKEND_PID=$!

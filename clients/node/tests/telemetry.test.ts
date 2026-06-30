@@ -33,14 +33,14 @@ function makeBackend() {
 }
 
 function reporter(opts: Partial<{ enabled: boolean }> = {}) {
-  return new TelemetryReporter("http://test", "dep_x", "peops_sk_test", {
+  return new TelemetryReporter("http://test", "dep_x", "astra_sk_test", {
     sdkVersion: "0.2.0",
     ...opts,
   });
 }
 
 afterEach(() => {
-  delete process.env.PEOPS_SDK_TELEMETRY;
+  delete process.env.ASTRA_SDK_TELEMETRY;
 });
 
 describe("TelemetryReporter", () => {
@@ -85,8 +85,8 @@ describe("TelemetryReporter", () => {
     expect(backend.batches).toHaveLength(0);
   });
 
-  it("is disabled via PEOPS_SDK_TELEMETRY=0", async () => {
-    process.env.PEOPS_SDK_TELEMETRY = "0";
+  it("is disabled via ASTRA_SDK_TELEMETRY=0", async () => {
+    process.env.ASTRA_SDK_TELEMETRY = "0";
     const backend = makeBackend();
     const rep = reporter();
     rep.recordEvent({ latencyMs: 1.0 });
