@@ -1,38 +1,38 @@
-# PEOps — backend stack (independently deployable).
+# Astra — backend stack (independently deployable).
 #
 # This brings up ONLY the backend: the FastAPI API, the arq worker, and their
 # infrastructure (PostgreSQL, Redis, MinIO/S3). It does NOT build or serve the
-# frontend — the SPA is deployed separately from the PEOps-Front repo, whose
+# frontend — the SPA is deployed separately from the Astra-Front repo, whose
 # Caddy reverse-proxies /api back to this stack (BACKEND_UPSTREAM).
 #
-# Run from this directory (PEOps-Back/deploy):
+# Run from this directory (Astra-Back/deploy):
 #     cp .env.example .env   # edit secrets
 #     docker compose up -d --build
-# The API is then reachable at http://localhost:${PEOPS_API_PORT:-8000}
+# The API is then reachable at http://localhost:${ASTRA_API_PORT:-8000}
 # (e.g. http://localhost:8000/healthz).
 #
-# Build context for api/worker is `..` (the PEOps-Back repo). The compression
-# engine (`peops/`) is vendored into the repo, so the image is self-contained —
+# Build context for api/worker is `..` (the Astra-Back repo). The compression
+# engine (`astra/`) is vendored into the repo, so the image is self-contained —
 # no sibling checkout or copy step is required.
 
 # Pin the compose project name so this stack is isolated from the frontend stack
 # (both live in a directory literally named `deploy`, which would otherwise
 # collide on the default project name and treat each other's containers as
 # orphans).
-name: peops-backend
+name: astra-backend
 
 services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-peops}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-peops}
-      POSTGRES_DB: ${POSTGRES_DB:-peops}
+      POSTGRES_USER: ${POSTGRES_USER:-astra}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-astra}
+      POSTGRES_DB: ${POSTGRES_DB:-astra}
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-peops}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-astra}"]
       interval: 5s
       timeout: 3s
       retries: 20
@@ -52,8 +52,8 @@ services:
     restart: unless-stopped
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-peopsadmin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-peopssecret}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-astraadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-astrasecret}
     volumes:
       - miniodata:/data
 
@@ -64,10 +64,10 @@ services:
       - minio
     entrypoint: >
       /bin/sh -c "
-      until mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-peopsadmin} ${MINIO_ROOT_PASSWORD:-peopssecret}; do
+      until mc alias set local http://minio:9000 ${MINIO_ROOT_USER:-astraadmin} ${MINIO_ROOT_PASSWORD:-astrasecret}; do
         echo 'waiting for minio...'; sleep 2;
       done;
-      mc mb --ignore-existing local/${PEOPS_S3_BUCKET:-peops-artifacts};
+      mc mb --ignore-existing local/${ASTRA_S3_BUCKET:-astra-artifacts};
       echo 'minio bucket ready';
       "
 
@@ -82,47 +82,47 @@ services:
     # because the API is bound to a private network, not the public internet.
     command: ["sh", "-c", "python -m alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'"]
     # Publish the API so the separately-deployed frontend (its Caddy) and any
-    # direct SDK clients can reach it. PEOPS_API_BIND defaults to 127.0.0.1 so a
+    # direct SDK clients can reach it. ASTRA_API_BIND defaults to 127.0.0.1 so a
     # single-box dev run isn't exposed; set it to 0.0.0.0 (or a specific host IP)
     # when the frontend stack runs elsewhere. In production keep this on a private
     # network behind TLS rather than a public 0.0.0.0 bind.
     ports:
-      - "${PEOPS_API_BIND:-127.0.0.1}:${PEOPS_API_PORT:-8000}:8000"
+      - "${ASTRA_API_BIND:-127.0.0.1}:${ASTRA_API_PORT:-8000}:8000"
     environment: &backend_env
-      PEOPS_DATABASE_URL: postgresql://${POSTGRES_USER:-peops}:${POSTGRES_PASSWORD:-peops}@postgres:5432/${POSTGRES_DB:-peops}
-      PEOPS_REDIS_URL: redis://redis:6379/0
-      PEOPS_STORAGE_BACKEND: s3
-      PEOPS_S3_ENDPOINT_URL: http://minio:9000
-      PEOPS_S3_BUCKET: ${PEOPS_S3_BUCKET:-peops-artifacts}
-      PEOPS_S3_ACCESS_KEY: ${MINIO_ROOT_USER:-peopsadmin}
-      PEOPS_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-peopssecret}
-      PEOPS_S3_FORCE_PATH_STYLE: "1"
-      PEOPS_JWT_SECRET: ${PEOPS_JWT_SECRET:-change-me-in-production}
+      ASTRA_DATABASE_URL: postgresql://${POSTGRES_USER:-astra}:${POSTGRES_PASSWORD:-astra}@postgres:5432/${POSTGRES_DB:-astra}
+      ASTRA_REDIS_URL: redis://redis:6379/0
+      ASTRA_STORAGE_BACKEND: s3
+      ASTRA_S3_ENDPOINT_URL: http://minio:9000
+      ASTRA_S3_BUCKET: ${ASTRA_S3_BUCKET:-astra-artifacts}
+      ASTRA_S3_ACCESS_KEY: ${MINIO_ROOT_USER:-astraadmin}
+      ASTRA_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-astrasecret}
+      ASTRA_S3_FORCE_PATH_STYLE: "1"
+      ASTRA_JWT_SECRET: ${ASTRA_JWT_SECRET:-change-me-in-production}
       # The public origin browsers use to reach the PRODUCT (the frontend's
       # Caddy). Drives CORS and the base URLs rendered in SDK snippets.
-      PEOPS_PUBLIC_ORIGIN: ${PEOPS_PUBLIC_ORIGIN:-http://localhost:8080}
-      PEOPS_CORS_ORIGINS: ${PEOPS_PUBLIC_ORIGIN:-http://localhost:8080}
-      PEOPS_COOKIE_SECURE: ${PEOPS_COOKIE_SECURE:-0}
-      PEOPS_COOKIE_SAMESITE: ${PEOPS_COOKIE_SAMESITE:-lax}
+      ASTRA_PUBLIC_ORIGIN: ${ASTRA_PUBLIC_ORIGIN:-http://localhost:8080}
+      ASTRA_CORS_ORIGINS: ${ASTRA_PUBLIC_ORIGIN:-http://localhost:8080}
+      ASTRA_COOKIE_SECURE: ${ASTRA_COOKIE_SECURE:-0}
+      ASTRA_COOKIE_SAMESITE: ${ASTRA_COOKIE_SAMESITE:-lax}
       # Synthetic dashboard traffic — off in production; flip to 1 only to demo.
-      PEOPS_TELEMETRY_SIM_ENABLED: ${PEOPS_TELEMETRY_SIM_ENABLED:-0}
-      PEOPS_GOOGLE_CLIENT_ID: ${PEOPS_GOOGLE_CLIENT_ID:-}
-      PEOPS_GOOGLE_CLIENT_SECRET: ${PEOPS_GOOGLE_CLIENT_SECRET:-}
-      # Empty by default so the callback derives from PEOPS_PUBLIC_ORIGIN
+      ASTRA_TELEMETRY_SIM_ENABLED: ${ASTRA_TELEMETRY_SIM_ENABLED:-0}
+      ASTRA_GOOGLE_CLIENT_ID: ${ASTRA_GOOGLE_CLIENT_ID:-}
+      ASTRA_GOOGLE_CLIENT_SECRET: ${ASTRA_GOOGLE_CLIENT_SECRET:-}
+      # Empty by default so the callback derives from ASTRA_PUBLIC_ORIGIN
       # (<origin>/api/auth/google/callback) — never a stale localhost host.
-      PEOPS_GOOGLE_REDIRECT_URI: ${PEOPS_GOOGLE_REDIRECT_URI:-}
+      ASTRA_GOOGLE_REDIRECT_URI: ${ASTRA_GOOGLE_REDIRECT_URI:-}
       # Feedback widget → GitHub Issues. When both are set, feedback submitted in
-      # the app also opens an issue in PEOPS_FEEDBACK_GITHUB_REPO. Values come
+      # the app also opens an issue in ASTRA_FEEDBACK_GITHUB_REPO. Values come
       # from deploy/.env (gitignored); unset → feedback is stored in the DB only.
-      PEOPS_FEEDBACK_GITHUB_TOKEN: ${PEOPS_FEEDBACK_GITHUB_TOKEN:-}
-      PEOPS_FEEDBACK_GITHUB_REPO: ${PEOPS_FEEDBACK_GITHUB_REPO:-}
-      PEOPS_FAST_PIPELINE: ${PEOPS_FAST_PIPELINE:-0}
-      PEOPS_PARETO_TRIALS: ${PEOPS_PARETO_TRIALS:-150}
+      ASTRA_FEEDBACK_GITHUB_TOKEN: ${ASTRA_FEEDBACK_GITHUB_TOKEN:-}
+      ASTRA_FEEDBACK_GITHUB_REPO: ${ASTRA_FEEDBACK_GITHUB_REPO:-}
+      ASTRA_FAST_PIPELINE: ${ASTRA_FAST_PIPELINE:-0}
+      ASTRA_PARETO_TRIALS: ${ASTRA_PARETO_TRIALS:-150}
       # 1 = adaptive D-scaled budget: per-model trials = clamp(10·D+10, 30,
       # PARETO_TRIALS), i.e. DYNAMIC, not a static PARETO_TRIALS count. 0 = fixed.
-      PEOPS_PARETO_ADAPTIVE: ${PEOPS_PARETO_ADAPTIVE:-1}
-      PEOPS_INLINE_JOBS: "0"
-      PEOPS_LOG_JSON: "1"
+      ASTRA_PARETO_ADAPTIVE: ${ASTRA_PARETO_ADAPTIVE:-1}
+      ASTRA_INLINE_JOBS: "0"
+      ASTRA_LOG_JSON: "1"
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
@@ -147,6 +147,49 @@ services:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
       minio-init: { condition: service_completed_successfully }
+
+  # Owner-only PRODUCT analytics (signups, active users, retention) via a
+  # self-hosted Umami — kept OUT of the app so we don't build analytics into the
+  # product itself. Umami is free + open source (MIT); the only cost is this one
+  # small container, and it REUSES the existing Postgres instance (a dedicated
+  # `umami` database, isolated from the app schema). The owner-only boundary is
+  # Umami's own admin login (default admin/umami — change it on first sign-in).
+
+  # One-shot: create the dedicated `umami` database if absent (idempotent), so a
+  # fresh OR existing Postgres volume both work. Gates the umami service.
+  umami-db-init:
+    image: postgres:16-alpine
+    restart: "no"
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:-astra}
+    entrypoint:
+      - sh
+      - -c
+      - >
+        psql -h postgres -U ${POSTGRES_USER:-astra} -d ${POSTGRES_DB:-astra} -tc
+        "SELECT 1 FROM pg_database WHERE datname='umami'" | grep -q 1 ||
+        psql -h postgres -U ${POSTGRES_USER:-astra} -d ${POSTGRES_DB:-astra}
+        -c "CREATE DATABASE umami"
+
+  umami:
+    image: docker.umami.is/umami-software/umami:postgresql-latest
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-astra}:${POSTGRES_PASSWORD:-astra}@postgres:5432/umami
+      DATABASE_TYPE: postgresql
+      # Signs Umami's own auth tokens — set a strong random value in .env.
+      APP_SECRET: ${UMAMI_APP_SECRET:-change-me-umami-secret}
+    # Published like the API (ASTRA_API_BIND): 127.0.0.1 for single-box dev, or
+    # UMAMI_BIND=0.0.0.0 so the frontend's Caddy / tunnel on another host reaches
+    # it at <this-host>:3001 — then set UMAMI_UPSTREAM=http://<this-host>:3001 on
+    # the frontend (mirroring BACKEND_UPSTREAM). Public TLS is at the Cloudflare edge.
+    ports:
+      - "${UMAMI_BIND:-127.0.0.1}:${UMAMI_PORT:-3001}:3000"
+    depends_on:
+      postgres: { condition: service_healthy }
+      umami-db-init: { condition: service_completed_successfully }
 
 volumes:
   pgdata:
