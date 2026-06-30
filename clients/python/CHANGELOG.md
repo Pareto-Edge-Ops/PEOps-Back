@@ -5,13 +5,20 @@
 - **Local serving**: `LocalRunner.from_deployment()` pulls the deployed,
   PEOps-compressed artifact (sha256/ETag-cached on disk) and serves it with
   onnxruntime on your own hardware (`pip install 'peops-sdk[serve]'`).
+- **Run a local file**: `LocalRunner.from_file("model.onnx")` serves an artifact
+  you already have (e.g. the SDK Hub "Download Artifact" file) — no deployment
+  needed; telemetry off unless you pass `deployment_id` + `api_key`.
 - **Built-in telemetry**: every local inference is measured (latency
   breakdown, batch, input signature) and shipped in fault-tolerant background
   batches to the PEOps dashboard — plus periodic system snapshots (CPU/RSS/
   throughput/runtime fingerprint) and windowed input/output distribution
   stats that power prediction/input drift alerts. Opt out with
   `report_telemetry=False` or `PEOPS_SDK_TELEMETRY=0`.
-- **CLI**: `peops pull | serve | bench`.
+- **No base URL in your code**: `base_url` is optional everywhere — it defaults
+  to the hosted PEOps origin (override with `PEOPS_BASE_URL` or the `base_url`
+  keyword). `from_deployment(deployment_id, api_key)` and
+  `PeopsClient(deployment_id, api_key)` need only the deployment id + API key.
+- **CLI**: `peops pull | serve | bench` (`--base-url` is optional).
 - Retries with exponential backoff on transient HTTP failures; telemetry can
   never raise into your serving path (drop-oldest queue, atexit flush).
 - PEP 561 (`py.typed`), MIT license, full PyPI metadata.

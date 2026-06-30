@@ -15,18 +15,31 @@ def test_snippets_is_object_keyed_by_language(client):
 
 
 def test_snippets_reference_only_real_apis(client):
-    """Docs honesty: every snippet targets APIs/commands that actually exist."""
+    """Docs honesty: every snippet targets APIs/commands that actually exist,
+    and presents the packages as embeddable libraries (not hand-wired servers)."""
     snippets = client.get("/api/sdk/snippets").json()
     all_code = "\n".join(s["code"] for s in snippets.values())
-    # The real package / CLI / SDK class appear (the card is a self-host guide)...
+    # The real packages / CLI / SDK class appear...
     assert "peops-sdk" in all_code
     assert "peops serve" in all_code            # real CLI command (cli.py)
     assert "LocalRunner" in all_code            # real SDK serving class (runner.py)
-    # ...and the old fictional APIs never do.
+    # ...the Node tab uses the real npm package as a library, not raw onnxruntime...
+    assert 'from "peops-sdk"' in all_code       # real npm import (clients/node)
+    assert "fromDeployment" in all_code         # real Node SDK entrypoint
+    # ...and the old fictional / hand-wired APIs never do.
     assert "pip install peops\n" not in all_code
     assert "brew install peops" not in all_code
     assert "client.pareto.run" not in all_code
     assert "npm install peops" not in all_code
+    assert "ort.InferenceSession" not in all_code   # no hand-wired onnxruntime-node
+    assert "new ort.Tensor" not in all_code
+    assert "import express" not in all_code         # no server boilerplate
+    # ...and copy-paste code never carries a base URL — it's baked into the SDK
+    # (the hosted origin), so users only fill in the deployment id + API key.
+    assert "BASE_URL" not in all_code
+    assert "__PEOPS_ORIGIN__" not in all_code
+    assert "base_url" not in all_code
+    assert "baseUrl" not in all_code
 
 
 def test_keys_and_webhooks_endpoints_removed(client):

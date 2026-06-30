@@ -6,6 +6,8 @@ from typing import Any
 
 import httpx
 
+from ._http import resolve_base_url
+
 
 class InferenceError(Exception):
     """Raised when the inference endpoint returns a non-2xx response."""
@@ -22,13 +24,13 @@ class PeopsClient:
 
     def __init__(
         self,
-        base_url: str,
         deployment_id: str,
         api_key: str,
         *,
+        base_url: str | None = None,
         timeout: float = 30.0,
     ) -> None:
-        self.base_url = base_url.rstrip("/")
+        self.base_url = resolve_base_url(base_url)
         self.deployment_id = deployment_id
         self.api_key = api_key
         self._client = httpx.Client(timeout=timeout)

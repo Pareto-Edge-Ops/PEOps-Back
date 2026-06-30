@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import random
 import time
 from typing import Any
@@ -9,6 +10,16 @@ from typing import Any
 import httpx
 
 _RETRYABLE_STATUS = {429, 502, 503, 504}
+
+# The hosted PEOps origin every deployment lives behind. Baked in so SDK code
+# never has to carry a base URL; override with the PEOPS_BASE_URL env var or an
+# explicit base_url argument (e.g. for self-host / testing).
+DEFAULT_BASE_URL = "https://peops.kwon5700.kr"
+
+
+def resolve_base_url(base_url: str | None) -> str:
+    """The base URL to use: explicit arg → PEOPS_BASE_URL env → hosted default."""
+    return (base_url or os.environ.get("PEOPS_BASE_URL") or DEFAULT_BASE_URL).rstrip("/")
 
 
 class ApiError(Exception):

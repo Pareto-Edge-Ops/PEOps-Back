@@ -17,8 +17,8 @@ import sys
 
 def _add_common(p: argparse.ArgumentParser) -> None:
     p.add_argument("--base-url", default=os.environ.get("PEOPS_BASE_URL"),
-                   help="PEOps origin, e.g. https://app.example.com "
-                        "(env PEOPS_BASE_URL)")
+                   help="PEOps origin (optional; defaults to the hosted origin, "
+                        "env PEOPS_BASE_URL)")
     p.add_argument("--deployment", default=os.environ.get("PEOPS_DEPLOYMENT_ID"),
                    help="deployment id, e.g. dep_ab12cd34ef (env PEOPS_DEPLOYMENT_ID)")
     p.add_argument("--api-key", default=os.environ.get("PEOPS_API_KEY"),
@@ -27,7 +27,7 @@ def _add_common(p: argparse.ArgumentParser) -> None:
 
 
 def _require(args) -> None:
-    missing = [n for n in ("base_url", "deployment", "api_key")
+    missing = [n for n in ("deployment", "api_key")
                if not getattr(args, n)]
     if missing:
         sys.exit(f"missing required option(s): {', '.join('--' + m.replace('_', '-') for m in missing)}")
@@ -37,7 +37,7 @@ def cmd_pull(args) -> int:
     from .runner import pull_artifact
 
     _require(args)
-    path = pull_artifact(args.base_url, args.deployment, args.api_key,
+    path = pull_artifact(args.deployment, args.api_key, base_url=args.base_url,
                          cache_dir=args.cache_dir)
     print(path)
     return 0
@@ -48,7 +48,7 @@ def cmd_bench(args) -> int:
 
     _require(args)
     runner = LocalRunner.from_deployment(
-        args.base_url, args.deployment, args.api_key, cache_dir=args.cache_dir)
+        args.deployment, args.api_key, base_url=args.base_url, cache_dir=args.cache_dir)
     lats: list[float] = []
     try:
         for i in range(args.n):
@@ -77,7 +77,7 @@ def cmd_serve(args) -> int:
 
     _require(args)
     runner = LocalRunner.from_deployment(
-        args.base_url, args.deployment, args.api_key, cache_dir=args.cache_dir)
+        args.deployment, args.api_key, base_url=args.base_url, cache_dir=args.cache_dir)
 
     class Handler(http.server.BaseHTTPRequestHandler):
         def do_POST(self):  # noqa: N802 — http.server API
@@ -112,7 +112,7 @@ def cmd_serve(args) -> int:
 
     server = http.server.ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
     print(f"serving {args.deployment} on http://127.0.0.1:{args.port}/infer "
-          f"(Ctrl-C to stop; telemetry → {args.base_url})")
+          f"(Ctrl-C to stop; telemetry → the PEOps dashboard)")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

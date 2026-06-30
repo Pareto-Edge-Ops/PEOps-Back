@@ -16,11 +16,8 @@ Calls the PEOps-hosted endpoint; telemetry is recorded server-side.
 ```python
 from peops_sdk import PeopsClient
 
-client = PeopsClient(
-    base_url="https://app.example.com",
-    deployment_id="dep_ab12cd34ef",
-    api_key="peops_sk_live_...",
-)
+# base_url defaults to the hosted PEOps origin (override with PEOPS_BASE_URL).
+client = PeopsClient("dep_ab12cd34ef", "peops_sk_live_...")
 out = client.infer({"input": [[0.1, 0.2, 0.3]]})
 print(out["latencyMs"], out["outputs"])
 ```
@@ -33,15 +30,28 @@ Pulls the deployed, compressed artifact once (sha256-cached under
 ```python
 from peops_sdk import LocalRunner
 
-runner = LocalRunner.from_deployment(
-    base_url="https://app.example.com",
-    deployment_id="dep_ab12cd34ef",
-    api_key="peops_sk_live_...",
-)
+# base_url defaults to the hosted PEOps origin (override with PEOPS_BASE_URL).
+runner = LocalRunner.from_deployment("dep_ab12cd34ef", "peops_sk_live_...")
 out = runner.run({"input": my_numpy_array})   # local inference
 print(out["latencyMs"], out["raw"][0].shape)
 runner.close()
 ```
+
+### Run a file you already have
+
+Downloaded the artifact (SDK Hub → **Download Artifact**) or have an `.onnx` on
+disk? Skip the deployment — serve the file directly:
+
+```python
+from peops_sdk import LocalRunner
+
+runner = LocalRunner.from_file("compressed.onnx")
+out = runner.run({"input": my_numpy_array})
+runner.close()
+```
+
+Telemetry is off for a bare file; pass `deployment_id=` + `api_key=` to still
+report local runs to that deployment.
 
 ### What gets reported to the dashboard
 
@@ -63,9 +73,9 @@ or `PEOPS_SDK_TELEMETRY=0`.
 ## CLI
 
 ```bash
-peops pull  --base-url https://app.example.com --deployment dep_x --api-key KEY
-peops serve --base-url ... --deployment dep_x --api-key KEY --port 8765
-peops bench --base-url ... --deployment dep_x --api-key KEY -n 200
+peops pull  --deployment dep_x --api-key KEY
+peops serve --deployment dep_x --api-key KEY --port 8765
+peops bench --deployment dep_x --api-key KEY -n 200
 ```
 
 Options can also come from `PEOPS_BASE_URL`, `PEOPS_DEPLOYMENT_ID`,

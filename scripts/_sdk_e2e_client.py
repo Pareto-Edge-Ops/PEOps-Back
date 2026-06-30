@@ -30,7 +30,7 @@ def main() -> None:
     print(f"   using {peops_sdk.__file__}")
 
     runner = LocalRunner.from_deployment(
-        h["baseUrl"], h["deploymentId"], h["apiKey"],
+        h["deploymentId"], h["apiKey"], base_url=h["baseUrl"],
         cache_dir="/tmp/peops-sdk-cache",
     )
     print(f"   artifact cached at {runner.model_path}")

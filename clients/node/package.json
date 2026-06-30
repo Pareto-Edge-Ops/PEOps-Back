@@ -1,0 +1,63 @@
+{
+  "name": "peops-sdk",
+  "version": "0.2.0",
+  "description": "Serve PEOps-compressed models anywhere — hosted or local ONNX serving with built-in telemetry that feeds the PEOps dashboard",
+  "type": "module",
+  "license": "MIT",
+  "author": "PEOps",
+  "keywords": [
+    "onnx",
+    "model-compression",
+    "inference",
+    "telemetry",
+    "mlops"
+  ],
+  "engines": {
+    "node": ">=18.17"
+  },
+  "bin": {
+    "peops": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build && npm run test"
+  },
+  "dependencies": {},
+  "optionalDependencies": {
+    "onnxruntime-node": ">=1.18"
+  },
+  "peerDependenciesMeta": {
+    "onnxruntime-node": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "tsup": "^8",
+    "typescript": "^5.4",
+    "vitest": "^1.6"
+  },
+  "homepage": "https://github.com/peops/peops#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/peops/peops.git",
+    "directory": "clients/node"
+  }
+}

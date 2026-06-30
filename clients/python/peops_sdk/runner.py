@@ -27,7 +27,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from ._http import HttpSession
+from ._http import HttpSession, resolve_base_url
 from .telemetry import TelemetryReporter
 
 _DEFAULT_CACHE = "~/.cache/peops"
@@ -84,19 +84,23 @@ class LocalRunner:
     @classmethod
     def from_deployment(
         cls,
-        base_url: str,
         deployment_id: str,
         api_key: str,
         *,
+        base_url: str | None = None,
         cache_dir: str = _DEFAULT_CACHE,
         report_telemetry: bool = True,
         providers: list[str] | None = None,
         timeout: float = 60.0,
     ) -> "LocalRunner":
-        """Pull (or reuse) the deployed artifact and build a runner for it."""
+        """Pull (or reuse) the deployed artifact and build a runner for it.
+
+        base_url defaults to the hosted PEOps origin (override with the
+        PEOPS_BASE_URL env var or the base_url keyword)."""
         _require_serve_extra()
+        base = resolve_base_url(base_url)
         path = pull_artifact(
-            base_url, deployment_id, api_key,
+            deployment_id, api_key, base_url=base,
             cache_dir=cache_dir, timeout=timeout,
         )
         from . import __version__
@@ -105,10 +109,38 @@ class LocalRunner:
         # actually selected — not just the first one available on the box.
         runner = cls(str(path), providers=providers)
         runner._reporter = TelemetryReporter(
-            base_url, deployment_id, api_key,
+            base, deployment_id, api_key,
             sdk_version=__version__, enabled=report_telemetry,
             active_provider=runner.active_provider,
         )
+        return runner
+
+    @classmethod
+    def from_file(
+        cls,
+        model_path: str,
+        *,
+        providers: list[str] | None = None,
+        report_telemetry: bool = False,
+        deployment_id: str | None = None,
+        api_key: str | None = None,
+        base_url: str | None = None,
+    ) -> "LocalRunner":
+        """Serve a model file you ALREADY have on disk — e.g. the one from the
+        SDK Hub "Download Artifact" button. No deployment / network needed.
+        Telemetry is OFF unless you also pass deployment_id + api_key (then local
+        runs still report to that deployment)."""
+        _require_serve_extra()
+        runner = cls(model_path, providers=providers)
+        want = report_telemetry or bool(deployment_id and api_key)
+        if want and deployment_id and api_key:
+            from . import __version__
+
+            runner._reporter = TelemetryReporter(
+                resolve_base_url(base_url), deployment_id, api_key,
+                sdk_version=__version__, enabled=True,
+                active_provider=runner.active_provider,
+            )
         return runner
 
     # ── serving ──────────────────────────────────────────────────────────────
@@ -213,15 +245,17 @@ class LocalRunner:
 
 
 def pull_artifact(
-    base_url: str,
     deployment_id: str,
     api_key: str,
     *,
+    base_url: str | None = None,
     cache_dir: str = _DEFAULT_CACHE,
     timeout: float = 60.0,
 ) -> Path:
-    """Download the deployed artifact (sha256-cached under cache_dir)."""
-    http = HttpSession(base_url, api_key, timeout=timeout)
+    """Download the deployed artifact (sha256-cached under cache_dir).
+
+    base_url defaults to the hosted PEOps origin (override with PEOPS_BASE_URL)."""
+    http = HttpSession(resolve_base_url(base_url), api_key, timeout=timeout)
     try:
         info = http.request(
             "GET", f"/api/v1/artifacts/{deployment_id}/info").json()
