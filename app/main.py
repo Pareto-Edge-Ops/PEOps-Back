@@ -129,6 +129,7 @@ def create_app() -> FastAPI:
         client_telemetry,
         dashboard,
         deployments,
+        feedback,
         infer,
         ingestion,
         meta,
@@ -157,6 +158,7 @@ def create_app() -> FastAPI:
     api.include_router(dashboard.router, dependencies=protected)
     api.include_router(models.router, dependencies=protected)
     api.include_router(deployments.router, dependencies=protected)
+    api.include_router(feedback.router, dependencies=protected)
     api.include_router(ingestion.router, dependencies=protected)
     api.include_router(architecture.router, dependencies=protected)
     api.include_router(pareto.router, dependencies=protected)

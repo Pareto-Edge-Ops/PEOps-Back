@@ -224,3 +224,9 @@ def trial_artifact_key(model_id: str, trial_number: int) -> str:
 
 def source_key(token: str, file_name: str) -> str:
     return f"uploads/{token}_{Path(file_name).name}"
+
+
+def feedback_attachment_key(feedback_id: str, file_name: str) -> str:
+    """Image attached to a feedback submission. Under a per-feedback prefix so
+    it's easy to locate/clean up alongside the row it belongs to."""
+    return f"feedback/{feedback_id}/{Path(file_name).name}"

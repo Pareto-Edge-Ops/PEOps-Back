@@ -62,6 +62,19 @@ class Settings(BaseSettings):
     google_redirect_uri: str | None = None
     post_login_path: str = "/dashboard"    # where the SPA lands after OAuth
 
+    # --- feedback widget (in-app → GitHub Issues) ---
+    # When BOTH are set, each submitted feedback also opens a GitHub issue in the
+    # target repo. Recommended: a PRIVATE repo + a fine-grained PAT scoped to
+    # Issues: Read and write on that one repo. Unset → feedback is stored in the
+    # DB only (no issue is created).
+    feedback_github_token: str | None = None
+    feedback_github_repo: str | None = None    # "owner/repo"
+    # Image attachments on feedback submissions — screenshots, not model files,
+    # so a much smaller cap and an image-only extension allowlist (separate from
+    # the model-upload allowlist below).
+    feedback_image_max_mb: int = 10
+    feedback_image_exts: str = ".png,.jpg,.jpeg,.gif,.webp"
+
     # --- uploads / limits ---
     max_upload_mb: int = 2048
     allowed_upload_exts: str = (
@@ -155,6 +168,10 @@ class Settings(BaseSettings):
         return {e.strip().lower() for e in self.allowed_upload_exts.split(",") if e.strip()}
 
     @property
+    def feedback_image_ext_set(self) -> set[str]:
+        return {e.strip().lower() for e in self.feedback_image_exts.split(",") if e.strip()}
+
+    @property
     def effective_database_url(self) -> str:
         """The SQLAlchemy URL actually used. database_url wins; else SQLite file."""
         if self.database_url:
@@ -168,6 +185,11 @@ class Settings(BaseSettings):
     @property
     def google_enabled(self) -> bool:
         return bool(self.google_client_id and self.google_client_secret)
+
+    @property
+    def github_feedback_enabled(self) -> bool:
+        """True when feedback submissions should also open a GitHub issue."""
+        return bool(self.feedback_github_token and self.feedback_github_repo)
 
     @property
     def effective_google_redirect_uri(self) -> str:
@@ -192,6 +214,12 @@ class Settings(BaseSettings):
             warnings.append(
                 "Google OAuth is half-configured — set BOTH PEOPS_GOOGLE_CLIENT_ID and "
                 "PEOPS_GOOGLE_CLIENT_SECRET (or neither). Google sign-in stays disabled."
+            )
+        if bool(self.feedback_github_token) != bool(self.feedback_github_repo):
+            warnings.append(
+                "Feedback→GitHub is half-configured — set BOTH PEOPS_FEEDBACK_GITHUB_TOKEN "
+                "and PEOPS_FEEDBACK_GITHUB_REPO (or neither). Feedback is still stored in "
+                "the DB; no issue is opened."
             )
         # An HTTPS public origin must serve a Secure session cookie; otherwise the
         # cookie lacks the Secure attribute and could leak over a downgraded request.

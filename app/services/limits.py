@@ -54,3 +54,27 @@ def enforce_size(num_bytes: int) -> None:
             "code": "file_too_large",
             "message": f"File exceeds the {settings.max_upload_mb} MB upload limit.",
         })
+
+
+def validate_feedback_image(file: UploadFile) -> None:
+    """Reject non-image attachments before staging bytes. Uses the dedicated
+    feedback image allowlist (NOT the model-format allowlist)."""
+    settings = get_settings()
+    name = file.filename or ""
+    ext = Path(name).suffix.lower()
+    if ext not in settings.feedback_image_ext_set:
+        allowed = ", ".join(sorted(settings.feedback_image_ext_set))
+        raise HTTPException(status_code=400, detail={
+            "code": "unsupported_image",
+            "message": f"Unsupported image type '{ext or name}'. Allowed: {allowed}.",
+        })
+
+
+def enforce_image_size(num_bytes: int) -> None:
+    settings = get_settings()
+    limit = settings.feedback_image_max_mb * 1024 * 1024
+    if num_bytes > limit:
+        raise HTTPException(status_code=413, detail={
+            "code": "image_too_large",
+            "message": f"Image exceeds the {settings.feedback_image_max_mb} MB limit.",
+        })

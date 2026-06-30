@@ -263,6 +263,30 @@ class ActivityRow(SQLModel, table=True):
     timestamp: str
 
 
+class FeedbackRow(SQLModel, table=True):
+    """In-app feedback / feature-request submission. The durable record; a GitHub
+    issue is opened from it as a best-effort side effect (github_issue_* set then)."""
+
+    __tablename__ = "feedback"
+
+    id: str = Field(primary_key=True)
+    user_id: str = Field(default="", index=True)
+    email: str = ""                    # submitter snapshot (from the session)
+    name: str = ""
+    kind: str = "feature"             # feature|bug|question|other
+    message: str
+    page: str | None = None           # route the user was on at submit time
+    locale: str | None = None         # UI locale at submit time
+    status: str = "open"              # open|triaged|closed (future)
+    github_issue_number: int | None = None
+    github_issue_url: str | None = None
+    created_at: str = ""               # ISO-8601
+    # Optional screenshot attachment. attachment_key is the object-storage key;
+    # attachment_name preserves the original filename for the download/serve.
+    attachment_key: str | None = None
+    attachment_name: str | None = None
+
+
 class RecipeRow(SQLModel, table=True):
     __tablename__ = "recipes"
 

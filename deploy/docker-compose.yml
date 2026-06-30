@@ -111,6 +111,11 @@ services:
       # Empty by default so the callback derives from PEOPS_PUBLIC_ORIGIN
       # (<origin>/api/auth/google/callback) — never a stale localhost host.
       PEOPS_GOOGLE_REDIRECT_URI: ${PEOPS_GOOGLE_REDIRECT_URI:-}
+      # Feedback widget → GitHub Issues. When both are set, feedback submitted in
+      # the app also opens an issue in PEOPS_FEEDBACK_GITHUB_REPO. Values come
+      # from deploy/.env (gitignored); unset → feedback is stored in the DB only.
+      PEOPS_FEEDBACK_GITHUB_TOKEN: ${PEOPS_FEEDBACK_GITHUB_TOKEN:-}
+      PEOPS_FEEDBACK_GITHUB_REPO: ${PEOPS_FEEDBACK_GITHUB_REPO:-}
       PEOPS_FAST_PIPELINE: ${PEOPS_FAST_PIPELINE:-0}
       PEOPS_PARETO_TRIALS: ${PEOPS_PARETO_TRIALS:-150}
       # 1 = adaptive D-scaled budget: per-model trials = clamp(10·D+10, 30,
