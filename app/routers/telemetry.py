@@ -1,12 +1,13 @@
-"""GET /api/models/:id/telemetry/* — REAL live data, benchmark as cold-start.
+"""GET /api/models/:id/telemetry/* — REAL deployment telemetry only.
 
 Once a deployed model has served real inference (inference_events exist), every
 endpoint aggregates that live traffic — KPIs carry a true window-over-window
 delta, charts are time-bucketed, the deployments table shows monitor-maintained
 live metrics, and alerts are real drift events. Before any traffic exists the
-same endpoints fall back to the post-compression benchmark, byte-identical to
-before (so a not-yet-deployed model — and the contract tests — are unchanged).
-A model with neither benchmark nor traffic still gets the honest structured 404.
+data endpoints return EMPTY shapes (never the post-compression benchmark): /meta
+reports availability + a reason (`not_deployed` | `weights_only_checkpoint`) and
+the SPA renders its "deploy / waiting for traffic" empty states instead of
+fabricated numbers. `telemetry_agg.has_any_events` is the single pivot.
 """
 
 from __future__ import annotations
@@ -51,24 +52,6 @@ def _model(session: Session, model_id: str, user_id: str) -> ModelRow:
     return owned_model(session, model_id, user_id)
 
 
-def _benchmark(session: Session, model: ModelRow) -> dict:
-    bench = get_cached_result(session, model.id, "benchmark", user_id=model.user_id)
-    if bench:
-        return bench
-    if model.weights_only:
-        raise HTTPException(status_code=404, detail={
-            "code": "weights_only_checkpoint",
-            "message": "This checkpoint is weights-only (state_dict) — it cannot be "
-                       "executed, so no benchmark exists. Export the full model or "
-                       "ONNX to enable benchmarking.",
-        })
-    raise HTTPException(status_code=404, detail={
-        "code": "no_benchmark",
-        "message": "No benchmark measurements for this model yet — the benchmark "
-                   "runs automatically when compression completes.",
-    })
-
-
 def _range(value: str) -> str:
     return value if value in _RANGES else "24h"
 
@@ -84,7 +67,7 @@ def kpi(
     if telemetry_agg.has_any_events(session, model_id):
         bench = get_cached_result(session, model_id, "benchmark", user_id=model.user_id)
         return telemetry_agg.kpi_live(session, model_id, bench, _range(range))
-    return telemetry_agg.kpi_from_benchmark(_benchmark(session, model))
+    return telemetry_agg.kpi_empty()
 
 
 @router.get("/series")
@@ -94,10 +77,10 @@ def series(
     range: str = Query(default="24h"),  # noqa: A002
     session: Session = Depends(get_session),
 ) -> list[TelemetryPoint]:
-    model = _model(session, model_id, current_user.id)
+    _model(session, model_id, current_user.id)
     if telemetry_agg.has_any_events(session, model_id):
         return telemetry_agg.series_live(session, model_id, _range(range))
-    return telemetry_agg.series_from_benchmark(_benchmark(session, model))
+    return []
 
 
 @router.get("/percentiles")
@@ -107,10 +90,10 @@ def percentiles(
     range: str = Query(default="24h"),  # noqa: A002
     session: Session = Depends(get_session),
 ) -> Percentiles:
-    model = _model(session, model_id, current_user.id)
+    _model(session, model_id, current_user.id)
     if telemetry_agg.has_any_events(session, model_id):
         return telemetry_agg.percentiles_live(session, model_id, _range(range))
-    return telemetry_agg.percentiles_from_benchmark(_benchmark(session, model))
+    return telemetry_agg.percentiles_empty()
 
 
 @router.get("/meta")
@@ -119,27 +102,24 @@ def meta(
     current_user: CurrentUser,
     session: Session = Depends(get_session),
 ) -> dict:
-    """Lets the SPA label KPIs (live vs benchmark) and show a liveness dot.
+    """Drives the SPA's hybrid empty-state gate + the liveness dot.
 
-    `available`/`reason` are the SPA's single gate for whether kpi/series/
-    percentiles will return data: those endpoints serve live events when any
-    exist, else fall back to the benchmark, else raise the structured 404. The
-    SPA reads this here and simply does not fire (or retry) the doomed requests —
-    so a weights-only / not-yet-benchmarked model shows its terminal state
-    instead of looping 404s.
+    `available` is true once the model is live (real events) OR has a deployment
+    armed to receive traffic. When false, `reason` tells the SPA which full-page
+    terminal to show: `weights_only_checkpoint` (can't be served) or
+    `not_deployed` (deploy it first). When available but not live (`source:"none"`)
+    the SPA renders the dashboard chrome with empty cards + "—" KPIs. So the
+    dashboard never shows benchmark-derived numbers as if they were traffic.
     """
     model_obj = _model(session, model_id, current_user.id)
     live = telemetry_agg.has_any_events(session, model_id)
-    bench = get_cached_result(
-        session, model_id, "benchmark", user_id=model_obj.user_id
-    )
-    available = live or bool(bench)
-    reason = None if available else (
-        "weights_only_checkpoint" if model_obj.weights_only else "no_benchmark"
-    )
     deps = session.exec(
         select(DeploymentRow).where(DeploymentRow.model_id == model_id)
     ).all()
+    available = live or len(deps) > 0
+    reason = None if available else (
+        "weights_only_checkpoint" if model_obj.weights_only else "not_deployed"
+    )
     from app.services.client_telemetry import source_counts
 
     snap_ts = session.exec(
@@ -149,10 +129,10 @@ def meta(
         .limit(1)
     ).first()
     return {
-        "source": "live" if live else "benchmark",
-        # Whether the data endpoints (kpi/series/percentiles) have anything to
-        # return; `reason` mirrors the structured 404 code they would otherwise
-        # raise (weights_only_checkpoint | no_benchmark) or null when available.
+        "source": "live" if live else "none",
+        # Whether to show the dashboard chrome at all; `reason`
+        # (weights_only_checkpoint | not_deployed) picks the full-page terminal
+        # when not available, or null when available.
         "available": available,
         "reason": reason,
         "deployments": len(deps),
@@ -309,7 +289,8 @@ def cost(
     """$ lens: compressed vs original $/1M, savings %, and monthly cost at
     measured (or projected) traffic. Original cost is a counterfactual (compressed
     × benchmarked latency ratio); a monthly figure is asserted only from real
-    measured QPS. Same live-vs-benchmark gate + structured 404 as the siblings."""
+    measured QPS. Empty (source:"none") until real traffic exists; a weights-only
+    checkpoint still gets the structured 404."""
     model = _model(session, model_id, current_user.id)
     from app.services import cost as cost_svc
 
@@ -479,7 +460,7 @@ def _stream_snapshot(session: Session, model_id: str) -> dict:
         select(AlertRow).where(AlertRow.model_id == model_id)
     ).all()
     return {
-        "source": "live" if live else "benchmark",
+        "source": "live" if live else "none",
         "deployments": len(deps),
         "liveDeployments": sum(1 for d in deps if d.status != "paused"),
         "openAlerts": len(open_alerts),

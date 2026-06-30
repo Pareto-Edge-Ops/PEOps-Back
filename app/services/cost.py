@@ -88,33 +88,51 @@ def _representative(groups: list[dict]) -> dict | None:
     return groups[0] if groups else None
 
 
+def _empty_cost_summary() -> dict:
+    """The cost lens for a deployed-but-untrafficked model: no numbers at all
+    (the SPA renders the CardEmpty state)."""
+    return {
+        "source": "none",
+        "compressedPer1M": 0.0,
+        "originalPer1M": None,
+        "savingsPer1M": None,
+        "savingsPct": None,
+        "assumedLatencyRatio": None,
+        "measuredQps": 0.0,
+        "monthlyCompressed": None,
+        "monthlyOriginal": None,
+        "monthlySavings": None,
+        "projected": False,
+        "projectedMonthlyCompressed": None,
+        "projectedMonthlyOriginal": None,
+        "projectedMonthlySavings": None,
+        "perHardware": [],
+    }
+
+
 def model_cost_summary(
     session: Session,
     model: ModelRow,
     range_str: str = "24h",
     project_qps: float | None = None,
 ) -> dict:
-    """Per-model $ summary. Same structured 404 contract as the sibling
-    telemetry endpoints (weights-only / no-benchmark) so the SPA's single gate
-    is preserved."""
+    """Per-model $ summary. Empty (source:"none") until real traffic exists, so
+    no benchmark-derived numbers leak in as if they were measured. A weights-only
+    checkpoint still gets the structured 404 (the SPA gates on /meta before ever
+    calling this, so the 404 is just defensive)."""
     from fastapi import HTTPException
 
-    bench = get_cached_result(session, model.id, "benchmark", user_id=model.user_id)
     live = has_any_events(session, model.id)
-
-    if not live and not bench:
+    if not live:
         if model.weights_only:
             raise HTTPException(status_code=404, detail={
                 "code": "weights_only_checkpoint",
                 "message": "This checkpoint is weights-only (state_dict) — it "
                            "cannot be executed, so no cost estimate exists.",
             })
-        raise HTTPException(status_code=404, detail={
-            "code": "no_benchmark",
-            "message": "No benchmark measurements for this model yet — the "
-                       "benchmark runs automatically when compression completes.",
-        })
+        return _empty_cost_summary()
 
+    bench = get_cached_result(session, model.id, "benchmark", user_id=model.user_id)
     ratio = _latency_ratio(bench)
     savings_pct = _savings_pct(ratio)
 
@@ -122,45 +140,25 @@ def model_cost_summary(
     compressed_per1m: float | None = None
     original_per1m: float | None = None
     measured_qps = 0.0
-    source = "live" if live else "benchmark"
 
     def _orig(cp: float) -> float | None:
         return round(cp * ratio, 4) if (ratio and cp > 0) else None
 
-    if live:
-        groups = hw.hardware_breakdown(session, model.id, range_str)
-        for g in groups:
-            cp = g["estCostPer1M"]
-            op = _orig(cp)
-            per_hardware.append({
-                "key": g["key"], "label": g["label"], "accelerator": g["accelerator"],
-                "p95": g["p95"], "throughputPerSec": g["throughputPerSec"],
-                "compressedPer1M": cp, "originalPer1M": op,
-                "savingsPer1M": round(op - cp, 4) if op is not None else None,
-            })
-        rep = _representative(groups)
-        if rep is not None:
-            compressed_per1m = rep["estCostPer1M"]
-            original_per1m = _orig(compressed_per1m)
-        measured_qps = _measured_qps(session, model.id, groups)
-    else:
-        # Benchmark fallback: a single reference row from the compressed p95
-        # priced on a hosted x86 CPU. No monthly figure is asserted (no traffic).
-        comp = bench.get("compressed", {}) if bench else {}
-        cp95 = float(comp.get("p95") or 0.0)
-        compressed_per1m = hw.est_cost_per_million(cp95, hw._CPU_X86_HOURLY)
-        original_per1m = _orig(compressed_per1m)
+    groups = hw.hardware_breakdown(session, model.id, range_str)
+    for g in groups:
+        cp = g["estCostPer1M"]
+        op = _orig(cp)
         per_hardware.append({
-            "key": "benchmark:reference",
-            "label": "Benchmark reference · CPU",
-            "accelerator": "hosted",
-            "p95": round(cp95, 3),
-            "throughputPerSec": round(1000.0 / cp95, 1) if cp95 > 0 else 0.0,
-            "compressedPer1M": compressed_per1m,
-            "originalPer1M": original_per1m,
-            "savingsPer1M": (round(original_per1m - compressed_per1m, 4)
-                             if original_per1m is not None else None),
+            "key": g["key"], "label": g["label"], "accelerator": g["accelerator"],
+            "p95": g["p95"], "throughputPerSec": g["throughputPerSec"],
+            "compressedPer1M": cp, "originalPer1M": op,
+            "savingsPer1M": round(op - cp, 4) if op is not None else None,
         })
+    rep = _representative(groups)
+    if rep is not None:
+        compressed_per1m = rep["estCostPer1M"]
+        original_per1m = _orig(compressed_per1m)
+    measured_qps = _measured_qps(session, model.id, groups)
 
     savings_per1m = (
         round(original_per1m - compressed_per1m, 4)
@@ -185,7 +183,7 @@ def model_cost_summary(
             proj_savings = round(proj_original - proj_compressed, 2)
 
     return {
-        "source": source,
+        "source": "live",
         "compressedPer1M": compressed_per1m or 0.0,
         "originalPer1M": original_per1m,
         "savingsPer1M": savings_per1m,
@@ -204,9 +202,10 @@ def model_cost_summary(
 
 
 def workspace_cost_savings(session: Session, user_id: str) -> dict:
-    """Workspace $ rollup across optimized models. Monthly $ accumulates only
-    from deployments with measured traffic; ``avgSavingsPct`` is the mean unit
-    savings across every model with a benchmark (honest at zero traffic)."""
+    """Workspace $ rollup across optimized models. Both monthly $ and
+    ``avgSavingsPct`` accumulate ONLY from models with real serving traffic, so
+    the workspace dashboard never shows benchmark-derived savings before any
+    model has actually been deployed and used."""
     metas = user_artifact_metas(session, user_id)
     monthly_compressed = monthly_original = 0.0
     has_live = False
@@ -216,11 +215,11 @@ def workspace_cost_savings(session: Session, user_id: str) -> dict:
     for model, _meta in metas:
         bench = get_cached_result(session, model.id, "benchmark", user_id=user_id)
         ratio = _latency_ratio(bench)
+        if ratio is None or not has_any_events(session, model.id):
+            continue
         sp = _savings_pct(ratio)
         if sp is not None:
             pcts.append(sp)
-        if ratio is None or not has_any_events(session, model.id):
-            continue
         groups = hw.hardware_breakdown(session, model.id, "24h")
         rep = _representative(groups)
         if rep is None:

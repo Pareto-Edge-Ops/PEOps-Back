@@ -8,10 +8,12 @@ past the benchmark baseline or the error rate breaches its threshold (with a
 cooldown so one incident isn't re-alerted every minute).
 
 Scope (locked decision): detection + alerting + live metrics only — no automatic
-re-optimization trigger. The accuracy_drift COLUMN remains the static benchmark
-divergence (context), but real distribution drift IS detected from SDK-shipped
-window stats: prediction drift (PSI of the output class distribution vs the
-deployment's pinned reference) and input drift (per-input mean shift in sigmas).
+re-optimization trigger. The accuracy_drift COLUMN carries the static benchmark
+divergence (context) ONLY for deployments with real traffic; a freshly deployed,
+untrafficked deployment reports 0 (no benchmark-derived value before any traffic).
+Real distribution drift IS detected from SDK-shipped window stats: prediction
+drift (PSI of the output class distribution vs the deployment's pinned reference)
+and input drift (per-input mean shift in sigmas).
 """
 
 from __future__ import annotations
@@ -139,7 +141,9 @@ def _update_live_metrics(
     dep.qps = round(total / win_sec, 3) if win_sec > 0 else 0.0
     dep.p95 = rolling_p95
     dep.errors_pct = err_pct
-    dep.accuracy_drift = _benchmark_divergence(session, dep.model_id)
+    # Only a deployment with real traffic carries a drift figure; a freshly
+    # deployed, untrafficked deployment reports 0 (no benchmark-derived value).
+    dep.accuracy_drift = _benchmark_divergence(session, dep.model_id) if total else 0.0
     last = max((e.ts for e in events), default=None)
     if last:
         dep.last_event_at = last

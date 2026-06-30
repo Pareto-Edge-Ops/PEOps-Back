@@ -1,11 +1,12 @@
 """Telemetry aggregation — turn raw inference_events into the dashboard contract.
 
-Two sources, picked per model:
-  • LIVE   — the model has real inference events → aggregate them (KPIs carry a
-             real window-over-window delta; series/percentiles are time-bucketed).
-  • BENCH  — the model has never been served → fall back to the post-compression
-             benchmark, byte-identical to the original telemetry endpoints (so the
-             existing contract tests, and any model not yet deployed, are intact).
+The dashboard shows ONLY real deployment traffic:
+  • LIVE  — the model has real inference events → aggregate them (KPIs carry a
+            real window-over-window delta; series/percentiles are time-bucketed).
+  • EMPTY — no real traffic yet → the endpoints return empty/zero shapes (NOT the
+            post-compression benchmark). The SPA gates on /meta and renders its
+            "deploy / waiting for traffic" empty states instead of fabricated
+            numbers. `has_any_events` is the single pivot.
 
 ≤24h ranges read raw events (exact). 7d/30d read the per-minute TelemetryRollupRow
 the drift monitor maintains, downsampled to the range's buckets (cheap at scale),
@@ -265,38 +266,22 @@ def percentiles_live(session: Session, model_id: str, range_str: str = "24h") ->
     )
 
 
-# ── BENCH fallback (byte-identical to the original endpoints) ─────────────────
+# ── EMPTY (no real traffic yet) ──────────────────────────────────────────────
 
 
-def kpi_from_benchmark(bench: dict) -> TelemetryKpi:
-    orig, comp = bench["original"], bench["compressed"]
-    divergence = round(100.0 - bench["agreementPct"], 2)
+def kpi_empty() -> TelemetryKpi:
+    """Zeroed KPIs for a deployed-but-untrafficked model. The SPA renders "—"
+    (driven by /meta source != "live"), so these values are never shown."""
     return TelemetryKpi(
-        requestsPerMin=DeltaKpi(
-            value=comp["throughputPerMin"],
-            deltaPct=_delta_pct(orig["throughputPerMin"], comp["throughputPerMin"]),
-        ),
-        p95LatencyMs=DeltaKpi(
-            value=comp["p95"], deltaPct=_delta_pct(orig["p95"], comp["p95"]),
-        ),
+        requestsPerMin=DeltaKpi(value=0.0, deltaPct=0.0),
+        p95LatencyMs=DeltaKpi(value=0.0, deltaPct=0.0),
         errorRate=DeltaKpi(value=0.0, deltaPct=0.0),
-        accuracyDrift=DriftKpi(value=divergence, note=_DRIFT_NOTE),
+        accuracyDrift=DriftKpi(value=0.0, note=_DRIFT_NOTE),
     )
 
 
-def series_from_benchmark(bench: dict) -> list[TelemetryPoint]:
-    return [
-        TelemetryPoint(t=b["t"], requests=b["requests"], p95=b["p95"])
-        for b in bench["buckets"]
-    ]
-
-
-def percentiles_from_benchmark(bench: dict) -> Percentiles:
-    buckets = bench["buckets"]
-    comp = bench["compressed"]
+def percentiles_empty() -> Percentiles:
     return Percentiles(
-        p50=[b["p50"] for b in buckets],
-        p95=[b["p95"] for b in buckets],
-        p99=[b["p99"] for b in buckets],
-        values=PercentileValues(p50=comp["p50"], p95=comp["p95"], p99=comp["p99"]),
+        p50=[], p95=[], p99=[],
+        values=PercentileValues(p50=0.0, p95=0.0, p99=0.0),
     )

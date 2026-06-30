@@ -28,9 +28,9 @@ class HardwareCostRow(BaseModel):
 
 
 class ModelCostSummary(BaseModel):
-    # "live" = derived from measured serving traffic; "benchmark" = derived from
-    # the post-compression benchmark (no live traffic yet — no monthly assertion).
-    source: Literal["live", "benchmark"]
+    # "live" = derived from measured serving traffic; "none" = no real traffic yet,
+    # so the cost lens is empty (no benchmark-derived numbers are surfaced).
+    source: Literal["live", "none"]
     compressedPer1M: float
     originalPer1M: float | None = None
     savingsPer1M: float | None = None
@@ -51,8 +51,8 @@ class ModelCostSummary(BaseModel):
 
 
 class WorkspaceCostSavings(BaseModel):
-    """Workspace-wide $ rollup. `monthly*` are asserted only across deployments
-    with measured traffic; `avgSavingsPct` is honest even at zero traffic."""
+    """Workspace-wide $ rollup. Both `monthly*` and `avgSavingsPct` are asserted
+    only across models with real serving traffic (null before any are used)."""
 
     hasLiveTraffic: bool
     monthlyCompressed: float | None = None
