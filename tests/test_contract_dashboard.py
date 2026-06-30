@@ -39,6 +39,12 @@ def test_empty_db_is_honestly_empty(empty_state):
     assert cov["segments"] == []
     assert "avgFidelity" not in cov   # excluded when no fidelity recorded
 
+    fh = empty_state["fleet_health"]
+    assert fh["status"] == "idle"     # no deployments yet → honestly idle
+    assert fh["liveDeployments"] == 0
+    assert fh["totalDeployments"] == 0
+    assert fh["openAlerts"] == 0
+
 
 # ── populated state (after the real fast-pipeline fixture ran) ──────────────
 
