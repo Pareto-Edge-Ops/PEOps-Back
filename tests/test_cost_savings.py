@@ -1,9 +1,10 @@
 """Cost & savings lens — compression translated into dollars.
 
 Pure-math unit checks for the cost formulas, plus end-to-end checks over the
-fleet simulator (live path) and the benchmark fallback (no-traffic path),
-asserting the honesty rules: a monthly $ is only asserted from measured QPS, and
-the original cost is the disclosed counterfactual (compressed × latency ratio).
+fleet simulator (live path) and the empty (no-traffic) path, asserting the
+honesty rules: a monthly $ is only asserted from measured QPS, the original cost
+is the disclosed counterfactual (compressed × latency ratio), and an unserved
+model exposes no cost numbers at all (no benchmark fallback).
 """
 
 from __future__ import annotations
@@ -84,31 +85,31 @@ def test_workspace_cost_savings_live(make_live_model, deploy_model, client):
     assert ws["monthlySavings"] == round(ws["monthlyOriginal"] - ws["monthlyCompressed"], 2)
 
 
-# ── benchmark fallback (no traffic) ───────────────────────────────────────────
+# ── empty (no traffic) ────────────────────────────────────────────────────────
 
 
-def test_model_cost_benchmark_fallback_no_monthly(real_model, client):
-    """A never-served model: unit $/1M from the benchmark, but NO monthly figure
-    is asserted (honesty — we have not measured any traffic)."""
+def test_model_cost_empty_until_traffic(real_model, client):
+    """A never-served model exposes NO cost numbers — no benchmark reference row,
+    no $/1M, no monthly figure (honesty — nothing has been measured)."""
     mid = real_model["modelId"]
     c = client.get(f"/api/models/{mid}/telemetry/cost").json()
-    assert c["source"] == "benchmark"
-    assert c["compressedPer1M"] >= 0
+    assert c["source"] == "none"
+    assert c["perHardware"] == []
+    assert c["compressedPer1M"] == 0.0
     assert c["measuredQps"] == 0.0
     assert c["monthlyCompressed"] is None
-    assert c["monthlySavings"] is None
-    # With response left as-is, perHardware carries one reference row.
-    assert c["perHardware"] and c["perHardware"][0]["accelerator"] == "hosted"
+    assert c["savingsPct"] is None
 
 
-def test_model_cost_projection(real_model, client):
-    """A target QPS lets the SPA project a monthly figure (labeled projected),
-    while the measured monthly stays null."""
-    mid = real_model["modelId"]
+def test_model_cost_projection_live(make_live_model, deploy_model, client):
+    """A target QPS projects a monthly figure (labeled projected) on the LIVE
+    path — projection from the benchmark no longer exists."""
+    mid = make_live_model("cost-proj.onnx")["modelId"]
+    deploy_model(mid)
+    _simulate_fleet(client, mid)
     c = client.get(f"/api/models/{mid}/telemetry/cost?projectQps=200").json()
     assert c["projected"] is True
     assert c["projectedMonthlyCompressed"] is not None
-    assert c["monthlyCompressed"] is None  # still no measured traffic
 
 
 def test_model_cost_weights_only_404(statedict_model, client):

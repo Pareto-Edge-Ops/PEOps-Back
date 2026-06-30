@@ -94,3 +94,32 @@ def test_monitor_writes_rollups(make_live_model, deploy_model, client):
         ).all()
     assert rollups, "monitor should upsert per-minute rollups"
     assert all(r.count > 0 for r in rollups)
+
+
+def test_zero_traffic_deployment_reports_no_drift(make_live_model, deploy_model):
+    """A freshly deployed, untrafficked deployment must report 0 accuracy drift —
+    the static benchmark divergence must NOT be written onto it before any
+    traffic exists (only a deployment with real events carries a drift figure)."""
+    mid = make_live_model("drift-zero.onnx")["modelId"]
+    dep_id, _ = deploy_model(mid)
+
+    from app.db import open_session
+    from app.dbmodels import DeploymentRow
+    from app.services.drift_monitor import drift_monitor_pass
+    from sqlmodel import select
+
+    # Pre-seed a stale non-zero drift, then prove a zero-traffic monitor pass
+    # clears it back to 0 (no benchmark-derived value persists without traffic).
+    with open_session() as s:
+        dep = s.exec(select(DeploymentRow).where(DeploymentRow.id == dep_id)).first()
+        dep.accuracy_drift = 12.5
+        s.add(dep)
+        s.commit()
+
+    with open_session() as s:
+        drift_monitor_pass(s)            # no events seeded → zero-traffic pass
+
+    with open_session() as s:
+        dep = s.exec(select(DeploymentRow).where(DeploymentRow.id == dep_id)).first()
+        assert dep.accuracy_drift == 0.0
+        assert dep.qps == 0.0

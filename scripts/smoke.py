@@ -145,18 +145,18 @@ def main() -> int:
 
         check("artifact info", _artifact_info)
 
-        # Telemetry — REAL benchmark measurements for this model
-        check("telemetry kpi (real benchmark)", lambda: TelemetryKpi.model_validate(
+        # Telemetry — empty until the model is deployed and serves real traffic
+        check("telemetry kpi (empty until traffic)", lambda: TelemetryKpi.model_validate(
             c.get(f"/api/models/{model_id}/telemetry/kpi").raise_for_status().json()))
 
         def _series():
             pts = [TelemetryPoint.model_validate(p) for p in
                    c.get(f"/api/models/{model_id}/telemetry/series")
                    .raise_for_status().json()]
-            assert pts, "expected real benchmark buckets"
+            assert pts == [], "an undeployed model has no series points"
             return pts
 
-        check("telemetry series (real buckets)", _series)
+        check("telemetry series (empty until traffic)", _series)
         check("telemetry percentiles", lambda: Percentiles.model_validate(
             c.get(f"/api/models/{model_id}/telemetry/percentiles").raise_for_status().json()))
         check("telemetry deployments (real only)", lambda: [Deployment.model_validate(d)
@@ -260,7 +260,9 @@ def main() -> int:
             assert pr.status_code == 404
             assert pr.json()["detail"]["code"] == "weights_only_checkpoint"
             tk = c.get(f"/api/models/{sd_up.modelId}/telemetry/kpi")
-            assert tk.status_code == 404
+            assert tk.status_code == 200 and tk.json()["requestsPerMin"]["value"] == 0.0
+            tm = c.get(f"/api/models/{sd_up.modelId}/telemetry/meta").json()
+            assert tm["available"] is False and tm["reason"] == "weights_only_checkpoint"
             art = c.get(f"/api/models/{sd_up.modelId}/artifact")
             assert art.status_code == 200 and len(art.content) > 100
             return True

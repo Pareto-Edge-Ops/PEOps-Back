@@ -7,8 +7,8 @@ def test_infer_serves_and_records(make_live_model, deploy_model, client):
     mid = make_live_model("infer-a.onnx")["modelId"]
     dep_id, key = deploy_model(mid)
 
-    # Before any traffic, telemetry is the benchmark cold-start.
-    assert client.get(f"/api/models/{mid}/telemetry/meta").json()["source"] == "benchmark"
+    # Before any traffic, telemetry is empty (deployed but not yet serving).
+    assert client.get(f"/api/models/{mid}/telemetry/meta").json()["source"] == "none"
 
     r = client.post(
         f"/api/v1/infer/{dep_id}",

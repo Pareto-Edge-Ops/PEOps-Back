@@ -1,9 +1,9 @@
-"""Live telemetry aggregation + benchmark-fallback parity.
+"""Live telemetry aggregation + empty (no-traffic) parity.
 
 Once a deployed model serves traffic, the telemetry endpoints aggregate the real
-events; a model that has never been served still returns the byte-identical
-benchmark fallback (covered exactly by test_contract_telemetry — re-asserted here
-at the source level).
+events; a model that has never been served returns empty shapes (NOT the
+benchmark) — covered by test_contract_telemetry and re-asserted here at the
+source level.
 """
 
 from __future__ import annotations
@@ -51,18 +51,13 @@ def test_range_param_controls_buckets(make_live_model, deploy_model, client):
     assert len(client.get(f"/api/models/{mid}/telemetry/series?range=7d").json()) == 84
 
 
-def test_unserved_model_falls_back_to_benchmark(real_model, client):
-    """A model with no traffic is byte-identical to the original benchmark path."""
+def test_unserved_model_is_empty_not_benchmark(real_model, client):
+    """A model with no traffic returns empty telemetry (source "none"), never the
+    benchmark reshaped to look like live data."""
     mid = real_model["modelId"]
-    assert client.get(f"/api/models/{mid}/telemetry/meta").json()["source"] == "benchmark"
+    assert client.get(f"/api/models/{mid}/telemetry/meta").json()["source"] == "none"
 
-    from app.db import open_session
-    from app.dbmodels import ModelRow
-    from app.repositories import get_cached_result
-
-    with open_session() as s:
-        owner = s.get(ModelRow, mid).user_id
-        bench = get_cached_result(s, mid, "benchmark", user_id=owner)
     kpi = client.get(f"/api/models/{mid}/telemetry/kpi").json()
-    assert kpi["requestsPerMin"]["value"] == bench["compressed"]["throughputPerMin"]
-    assert kpi["p95LatencyMs"]["value"] == bench["compressed"]["p95"]
+    assert kpi["requestsPerMin"]["value"] == 0.0
+    assert kpi["p95LatencyMs"]["value"] == 0.0
+    assert client.get(f"/api/models/{mid}/telemetry/series").json() == []

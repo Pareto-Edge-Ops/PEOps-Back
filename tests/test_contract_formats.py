@@ -58,7 +58,11 @@ def test_keras_h5_runs_full_pipeline(client, keras_h5):
     par = client.get(f"/api/models/{mid}/pareto")
     assert par.status_code == 200 and par.json()["trials"]
     kpi = client.get(f"/api/models/{mid}/telemetry/kpi")
-    assert kpi.status_code == 200 and kpi.json()["p95LatencyMs"]["value"] > 0
+    # Executable graph → telemetry is gated on deployment (not weights-only), and
+    # empty until real traffic exists (no benchmark fallback).
+    assert kpi.status_code == 200 and kpi.json()["p95LatencyMs"]["value"] == 0.0
+    meta = client.get(f"/api/models/{mid}/telemetry/meta").json()
+    assert meta["reason"] == "not_deployed"
 
     logs = client.get(
         f"/api/models/{mid}/ingestion/{body['runId']}/logs"

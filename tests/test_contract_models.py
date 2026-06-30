@@ -164,9 +164,12 @@ def test_import_real_pipeline_e2e(client):
         assert 0 <= t["score"] <= 100
         assert t["size"] > 0
 
-    # Real benchmark-backed telemetry exists for this model
+    # Telemetry is empty until the model is deployed and serves real traffic
+    # (no benchmark fallback): the endpoint is healthy and returns zeros.
     kpi = client.get(f"/api/models/{model_id}/telemetry/kpi").json()
-    assert kpi["p95LatencyMs"]["value"] > 0
+    assert kpi["p95LatencyMs"]["value"] == 0.0
+    meta = client.get(f"/api/models/{model_id}/telemetry/meta").json()
+    assert meta["available"] is False and meta["reason"] == "not_deployed"
 
     # Compressed artifact downloadable
     art = client.get(f"/api/models/{model_id}/artifact")
