@@ -101,6 +101,21 @@ class GuaranteeCoverage(BaseModel):
     segments: list[GuaranteeSegment]   # rung distribution (SplitBar)
 
 
+class FleetHealth(BaseModel):
+    """Workspace deployment health at a glance — promotes "is anything broken?"
+    into the KPI strip. Derived entirely from existing deployment rows + alerts;
+    no new measurement. `status` is the worst signal present (the SPA localizes
+    it and colors the tile)."""
+
+    status: str                # "healthy" | "warning" | "danger" | "idle"
+    liveDeployments: int       # deployments with status != "paused"
+    totalDeployments: int
+    driftingDeployments: int   # live deployments past their model's tolerance
+    openAlerts: int            # every AlertRow for the user (no resolved flag)
+    dangerAlerts: int
+    warningAlerts: int
+
+
 class ActivityEvent(BaseModel):
     id: str
     kind: ActivityKind

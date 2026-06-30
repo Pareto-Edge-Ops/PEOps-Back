@@ -30,6 +30,7 @@ from app.schemas.dashboard import (
     CompressionMap,
     CompressionPoint,
     DashboardRun,
+    FleetHealth,
     GuaranteeCoverage,
     GuaranteeSegment,
     KpiBlock,
@@ -312,6 +313,18 @@ def cost_savings(
     from app.services import cost as cost_svc
 
     return WorkspaceCostSavings(**cost_svc.workspace_cost_savings(session, current_user.id))
+
+
+@router.get("/fleet-health", response_model_exclude_none=True)
+def fleet_health(
+    current_user: CurrentUser,
+    session: Session = Depends(get_session),
+) -> FleetHealth:
+    """Workspace deployment health: live endpoints, deployments past their
+    tolerance, and open alerts — derived from existing rows, no new measurement."""
+    from app.services import fleet
+
+    return FleetHealth(**fleet.workspace_fleet_health(session, current_user.id))
 
 
 @router.get("/top-models")
