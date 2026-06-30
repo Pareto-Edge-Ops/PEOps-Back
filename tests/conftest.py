@@ -60,6 +60,11 @@ def client(tmp_path_factory: pytest.TempPathFactory) -> Iterator[TestClient]:
         # this; the enabled-path tests opt in via _enable_google().
         "PEOPS_GOOGLE_CLIENT_ID": "",
         "PEOPS_GOOGLE_CLIENT_SECRET": "",
+        # Pin feedback→GitHub OFF for the suite regardless of a developer's local
+        # .env (env vars outrank .env). Otherwise the feedback contract tests would
+        # fire the background task against the REAL GitHub API and open live issues.
+        "PEOPS_FEEDBACK_GITHUB_TOKEN": "",
+        "PEOPS_FEEDBACK_GITHUB_REPO": "",
         # Enable the demo traffic generator for the telemetry tests. The inline
         # drift-monitor loop is pinned OFF (production default is ON) so passes
         # only run when a test calls them — keeping alert assertions deterministic.
@@ -106,6 +111,7 @@ def empty_state(client: TestClient) -> dict:
         "compression_map": client.get("/api/dashboard/compression-map").json(),
         "top_models": client.get("/api/dashboard/top-models").json(),
         "guarantee_coverage": client.get("/api/dashboard/guarantee-coverage").json(),
+        "fleet_health": client.get("/api/dashboard/fleet-health").json(),
         "activity": client.get("/api/dashboard/activity?limit=50").json(),
     }
 
