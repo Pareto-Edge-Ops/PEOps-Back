@@ -1,4 +1,4 @@
-"""Request schemas for the client-telemetry batch endpoint (astra-sdk)."""
+"""Request schemas for the client-telemetry batch endpoint (astra-ai-sdk)."""
 
 from __future__ import annotations
 

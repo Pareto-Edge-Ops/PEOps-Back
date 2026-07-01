@@ -1,12 +1,12 @@
-# astra-sdk
+# astra-ai-sdk
 
 Serve **Astra-compressed models** anywhere — and keep the Astra dashboard
 monitoring them while they run on your hardware.
 
 ```bash
-pip install astra-sdk                # hosted inference client
-pip install 'astra-sdk[serve]'       # + local ONNX serving (onnxruntime, numpy)
-pip install 'astra-sdk[serve,system]'  # + precise CPU/RSS metrics (psutil)
+pip install astra-ai-sdk                # hosted inference client
+pip install 'astra-ai-sdk[serve]'       # + local ONNX serving (onnxruntime, numpy)
+pip install 'astra-ai-sdk[serve,system]'  # + precise CPU/RSS metrics (psutil)
 ```
 
 ## Hosted inference

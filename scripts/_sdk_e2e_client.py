@@ -31,7 +31,7 @@ def main() -> None:
 
     runner = LocalRunner.from_deployment(
         h["deploymentId"], h["apiKey"], base_url=h["baseUrl"],
-        cache_dir="/tmp/astra-sdk-cache",
+        cache_dir="/tmp/astra-ai-sdk-cache",
     )
     print(f"   artifact cached at {runner.model_path}")
 

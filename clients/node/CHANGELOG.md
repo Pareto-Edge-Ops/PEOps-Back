@@ -1,11 +1,11 @@
 # Changelog
 
-Versions are kept in **lockstep** with the Python `astra-sdk` so the dashboard's
+Versions are kept in **lockstep** with the Python `astra-ai-sdk` so the dashboard's
 single `GET /api/sdk/version` describes both clients truthfully.
 
 ## 0.2.0 — 2026-06-29
 
-- Initial Node release — API parity with the Python `astra-sdk` 0.2.0.
+- Initial Node release — API parity with the Python `astra-ai-sdk` 0.2.0.
 - **No base URL in your code**: `baseUrl` is optional everywhere — it defaults to
   the hosted Astra origin (override with `ASTRA_BASE_URL` or the `baseUrl`
   option). SDK code only needs the deployment id + API key. `AstraClient` is now

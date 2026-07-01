@@ -1,4 +1,4 @@
-// SDK e2e (Node) — runs with the TARBALL-INSTALLED astra-sdk from a /tmp project.
+// SDK e2e (Node) — runs with the TARBALL-INSTALLED astra-ai-sdk from a /tmp project.
 //
 // Pulls the deployed artifact, serves it locally with LocalRunner, fires normal
 // traffic then distribution-shifted traffic, and flushes telemetry. No repo
@@ -11,11 +11,11 @@ import { parseArgs } from "node:util";
 const { values } = parseArgs({ options: { handoff: { type: "string" } } });
 const h = JSON.parse(readFileSync(values.handoff, "utf8"));
 
-const { LocalRunner } = await import("astra-sdk");
+const { LocalRunner } = await import("astra-ai-sdk");
 
 // Prove we imported the INSTALLED tarball, not the repo source.
-const resolved = import.meta.resolve("astra-sdk");
-if (!resolved.includes("/node_modules/astra-sdk/")) {
+const resolved = import.meta.resolve("astra-ai-sdk");
+if (!resolved.includes("/node_modules/astra-ai-sdk/")) {
   throw new Error(`must import the INSTALLED tarball, got ${resolved}`);
 }
 console.log(`   using ${resolved}`);

@@ -1,5 +1,5 @@
 {
-  "name": "astra-sdk",
+  "name": "astra-ai-sdk",
   "version": "0.2.0",
   "description": "Serve Astra-compressed models anywhere — hosted or local ONNX serving with built-in telemetry that feeds the Astra dashboard",
   "type": "module",
@@ -54,10 +54,10 @@
     "typescript": "^5.4",
     "vitest": "^1.6"
   },
-  "homepage": "https://github.com/astra/astra#readme",
+  "homepage": "https://github.com/AstraFoundation/Astra-Back#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/astra/astra.git",
+    "url": "https://github.com/AstraFoundation/Astra-Back.git",
     "directory": "clients/node"
   }
 }

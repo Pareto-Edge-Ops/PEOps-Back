@@ -1,12 +1,12 @@
-# astra-sdk (Node)
+# astra-ai-sdk (Node)
 
 Serve **Astra-compressed models** anywhere — and keep the Astra dashboard
 monitoring them while they run on your hardware. The Node client mirrors the
-[Python `astra-sdk`](../python) API.
+[Python `astra-ai-sdk`](../python) API.
 
 ```bash
-npm i astra-sdk                  # hosted inference client (zero deps)
-npm i astra-sdk onnxruntime-node # + local ONNX serving on your hardware
+npm i astra-ai-sdk                  # hosted inference client (zero deps)
+npm i astra-ai-sdk onnxruntime-node # + local ONNX serving on your hardware
 ```
 
 Requires **Node ≥ 18.17** (global `fetch`). `onnxruntime-node` is an optional
@@ -17,7 +17,7 @@ dependency — install it only if you use `LocalRunner` / `astra serve`.
 Calls the Astra-hosted endpoint; telemetry is recorded server-side.
 
 ```ts
-import { AstraClient } from "astra-sdk";
+import { AstraClient } from "astra-ai-sdk";
 
 // baseUrl defaults to the hosted Astra origin (override with ASTRA_BASE_URL).
 const client = new AstraClient("dep_ab12cd34ef", "astra_sk_live_...");
@@ -32,7 +32,7 @@ Pulls the deployed, compressed artifact once (sha256-cached under
 server to stand up:
 
 ```ts
-import { LocalRunner } from "astra-sdk";
+import { LocalRunner } from "astra-ai-sdk";
 
 // baseUrl defaults to the hosted Astra origin (override with ASTRA_BASE_URL).
 const runner = await LocalRunner.fromDeployment({
@@ -55,7 +55,7 @@ Downloaded the artifact (SDK Hub → **Download Artifact**) or have an `.onnx` o
 disk? Skip the deployment — serve the file directly:
 
 ```ts
-import { LocalRunner } from "astra-sdk";
+import { LocalRunner } from "astra-ai-sdk";
 
 const runner = await LocalRunner.fromFile("compressed.onnx");
 const out = await runner.run({ data: { data: myFloats, dims: [1, 3, 224, 224] } });
@@ -97,6 +97,6 @@ astra bench --deployment dep_x --api-key KEY -n 200
 ## Supported platforms
 
 `onnxruntime-node` ships prebuilt binaries for common platforms (macOS/Linux/
-Windows on x64/arm64). On platforms it doesn't cover, `npm i astra-sdk` still
+Windows on x64/arm64). On platforms it doesn't cover, `npm i astra-ai-sdk` still
 succeeds (it's an optional dependency) — `AstraClient` and `astra pull` work,
 and `LocalRunner` raises a clear error until onnxruntime-node is available.

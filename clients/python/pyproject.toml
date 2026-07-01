@@ -3,7 +3,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "astra-sdk"
+name = "astra-ai-sdk"
 version = "0.2.0"
 description = "Serve Astra-compressed models anywhere - hosted or local ONNX serving with built-in telemetry that feeds the Astra dashboard"
 readme = "README.md"
@@ -32,9 +32,9 @@ gpu = ["nvidia-ml-py>=12"]
 dev = ["pytest>=8.0", "numpy>=1.26", "onnx>=1.16", "onnxruntime>=1.18"]
 
 [project.urls]
-Homepage = "https://github.com/astra/astra"
-Documentation = "https://github.com/astra/astra#readme"
-Changelog = "https://github.com/astra/astra/blob/main/clients/python/CHANGELOG.md"
+Homepage = "https://github.com/AstraFoundation/Astra-Back"
+Documentation = "https://github.com/AstraFoundation/Astra-Back#readme"
+Changelog = "https://github.com/AstraFoundation/Astra-Back/blob/main/clients/python/CHANGELOG.md"
 
 [project.scripts]
 astra = "astra_sdk.cli:main"

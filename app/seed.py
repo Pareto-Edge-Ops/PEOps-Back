@@ -5,8 +5,8 @@ ever fabricated: every operational row in the DB comes from real uploads and
 real pipeline events. The only seeded rows are SDK documentation (quick-start
 snippets and recipes), which are static docs content, not operational state.
 
-Every snippet below targets APIs that actually exist: the astra-sdk packages
-(Python `pip install astra-sdk`, Node `npm i astra-sdk`) — AstraClient /
+Every snippet below targets APIs that actually exist: the astra-ai-sdk packages
+(Python `pip install astra-ai-sdk`, Node `npm i astra-ai-sdk`) — AstraClient /
 LocalRunner / `astra` CLI — and the real REST endpoints (/api/v1/infer,
 /api/v1/artifacts, /api/v1/telemetry). A version marker row lets upgrades
 replace stale docs rows in already-seeded databases.
@@ -21,9 +21,9 @@ from sqlmodel import Session, select
 from app.dbmodels import RecipeRow, SdkSnippetRow
 
 # Bump when snippets/recipes change — seeded DBs are upgraded in place.
-_DOCS_VERSION = "7"
+_DOCS_VERSION = "8"
 
-# "Run the compressed model in YOUR code" guide. Each snippet uses the astra-sdk
+# "Run the compressed model in YOUR code" guide. Each snippet uses the astra-ai-sdk
 # package as an embeddable library — `runner.run(inputs)` inside the user's own
 # app, NOT a server they must stand up. The base URL is baked into the SDK (the
 # hosted origin), so copy-paste code needs only the deployment id + API key —
@@ -32,7 +32,7 @@ _SNIPPETS: dict[str, dict] = {
     "python": {
         "language": "python", "filename": "infer.py",
         "code": '''# Run the compressed model inside your own code — no server, no base URL.
-# pip install 'astra-sdk[serve]'
+# pip install 'astra-ai-sdk[serve]'
 from astra_sdk import LocalRunner
 
 # Deployment id + key from the Deployments tab (key shown once when minted).
@@ -49,8 +49,8 @@ runner.close()                            # flush telemetry on shutdown
     "node": {
         "language": "node", "filename": "infer.ts",
         "code": '''// Run the compressed model inside your own code — no server, no base URL.
-// npm i astra-sdk onnxruntime-node
-import { LocalRunner } from "astra-sdk";
+// npm i astra-ai-sdk onnxruntime-node
+import { LocalRunner } from "astra-ai-sdk";
 
 // Deployment id + key from the Deployments tab (key shown once when minted).
 const runner = await LocalRunner.fromDeployment({
@@ -66,7 +66,7 @@ await runner.close();''',
     "cli": {
         "language": "cli", "filename": "serve.sh",
         "code": '''# Optional zero-code path: wrap the compressed model in a local POST /infer.
-pip install 'astra-sdk[serve]'      # or: npm i -g astra-sdk onnxruntime-node
+pip install 'astra-ai-sdk[serve]'      # or: npm i -g astra-ai-sdk onnxruntime-node
 
 export ASTRA_DEPLOYMENT_ID=dep_...         # Deployments tab -> deployment id
 export ASTRA_API_KEY=astra_sk_live_...     # shown once when the key is minted

@@ -1,4 +1,4 @@
-"""Client-telemetry ingestion (astra-sdk path): batch endpoint, key-authed
+"""Client-telemetry ingestion (astra-ai-sdk path): batch endpoint, key-authed
 artifact pull, drift detection from window stats, and aggregation parity."""
 
 from __future__ import annotations

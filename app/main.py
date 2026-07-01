@@ -149,7 +149,7 @@ def create_app() -> FastAPI:
     # is the real-user traffic path; it must sit outside the cookie gate.
     api.include_router(infer.router)
     # Public — SDK telemetry ingestion + artifact pull, same Bearer-key auth
-    # as /v1/infer (the astra-sdk pip package holds only a deployment key).
+    # as /v1/infer (the astra-ai-sdk pip package holds only a deployment key).
     api.include_router(client_telemetry.router)
     # Every other router requires a valid session. Handlers that scope by owner
     # also inject CurrentUser; this router-level gate is defense-in-depth so a

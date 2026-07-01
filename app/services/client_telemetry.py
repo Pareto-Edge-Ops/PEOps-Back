@@ -1,4 +1,4 @@
-"""Ingest astra-sdk telemetry batches into the live-telemetry tables.
+"""Ingest astra-ai-sdk telemetry batches into the live-telemetry tables.
 
 Client request events land in `inference_events` with source="client", so the
 EXISTING aggregation (KPIs, series, percentiles, rollups, p95/error alerts)

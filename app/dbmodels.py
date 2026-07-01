@@ -145,7 +145,7 @@ class InferenceEventRow(SQLModel, table=True):
     batch_size: int = 1
     region: str = ""
     # Where the event was measured: "server" (hosted /v1/infer) or "client"
-    # (astra-sdk serving the artifact locally and shipping telemetry batches).
+    # (astra-ai-sdk serving the artifact locally and shipping telemetry batches).
     source: str = Field(default="server", index=True)
     latency_pre_ms: float | None = None       # client-side input preparation
     latency_post_ms: float | None = None      # client-side output handling
@@ -154,7 +154,7 @@ class InferenceEventRow(SQLModel, table=True):
 
 
 class TelemetrySnapshotRow(SQLModel, table=True):
-    """Periodic system snapshot from a astra-sdk client serving a deployment
+    """Periodic system snapshot from a astra-ai-sdk client serving a deployment
     locally — host resource usage + runtime fingerprint (every ~30s)."""
 
     __tablename__ = "telemetry_snapshots"
@@ -185,7 +185,7 @@ class TelemetrySnapshotRow(SQLModel, table=True):
 
 
 class TelemetryWindowStatsRow(SQLModel, table=True):
-    """Windowed input/output distribution stats from a astra-sdk client —
+    """Windowed input/output distribution stats from a astra-ai-sdk client —
     the raw signal for prediction/input drift detection (every ~60s)."""
 
     __tablename__ = "telemetry_window_stats"

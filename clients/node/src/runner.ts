@@ -1,7 +1,7 @@
 // LocalRunner — serve a Astra-deployed artifact on your own hardware.
 // Mirrors clients/python/astra_sdk/runner.py.
 //
-//     import { LocalRunner } from "astra-sdk";
+//     import { LocalRunner } from "astra-ai-sdk";
 //
 //     const runner = await LocalRunner.fromDeployment({
 //       baseUrl: "https://app.example.com",

@@ -17,7 +17,7 @@ shipped to the Astra dashboard by the background TelemetryReporter, together
 with periodic system snapshots and windowed input/output stats — the same
 closed loop hosted serving gets, but on your hardware.
 
-Requires the [serve] extra:  pip install 'astra-sdk[serve]'
+Requires the [serve] extra:  pip install 'astra-ai-sdk[serve]'
 """
 
 from __future__ import annotations
@@ -44,7 +44,7 @@ def _require_serve_extra():
     except ImportError as exc:  # pragma: no cover - exercised only without extra
         raise RunnerError(
             "Local serving needs onnxruntime + numpy — install the extra: "
-            "pip install 'astra-sdk[serve]'"
+            "pip install 'astra-ai-sdk[serve]'"
         ) from exc
     return numpy, onnxruntime
 

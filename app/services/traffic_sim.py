@@ -141,7 +141,7 @@ def simulate_burst(
 # T4, an A10G, an Apple CoreML box and a hosted x86 CPU — so the per-hardware
 # speed + GPU resource views are visible and verifiable. Rows are written as
 # ordinary client telemetry (events + snapshots + windows), identical in shape
-# to what astra-sdk ships, so aggregation treats them exactly like real fleets.
+# to what astra-ai-sdk ships, so aggregation treats them exactly like real fleets.
 
 # Each profile: relative inference cost + the hardware identity the dashboard
 # attributes it to. Latencies are deliberately ordered GPU < CoreML < CPU so the

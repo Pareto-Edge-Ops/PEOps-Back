@@ -4,7 +4,7 @@
 
 - **Local serving**: `LocalRunner.from_deployment()` pulls the deployed,
   Astra-compressed artifact (sha256/ETag-cached on disk) and serves it with
-  onnxruntime on your own hardware (`pip install 'astra-sdk[serve]'`).
+  onnxruntime on your own hardware (`pip install 'astra-ai-sdk[serve]'`).
 - **Run a local file**: `LocalRunner.from_file("model.onnx")` serves an artifact
   you already have (e.g. the SDK Hub "Download Artifact" file) — no deployment
   needed; telemetry off unless you pass `deployment_id` + `api_key`.

@@ -26,7 +26,7 @@ router = APIRouter(prefix="/sdk", tags=["sdk"])
 
 @lru_cache(maxsize=1)
 def _sdk_version() -> str:
-    """Real astra-sdk client version. Source of truth, in order: the installed
+    """Real astra-ai-sdk client version. Source of truth, in order: the installed
     `astra_sdk` package, then the vendored client's pyproject, then a constant.
     Keeps the SDK Hub version chip honest instead of a hardcoded string."""
     try:

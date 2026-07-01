@@ -1,15 +1,15 @@
-// astra-sdk — serve Astra-compressed models anywhere, with telemetry built in.
+// astra-ai-sdk — serve Astra-compressed models anywhere, with telemetry built in.
 //
 // Hosted inference (zero extra deps):
 //
-//     import { AstraClient } from "astra-sdk";
+//     import { AstraClient } from "astra-ai-sdk";
 //     const client = new AstraClient(baseUrl, deploymentId, apiKey);
 //     const out = await client.infer({ input: [[0.1, 0.2]] });
 //
 // Local serving (npm i onnxruntime-node) — pulls the compressed artifact and
 // runs it on YOUR hardware while the dashboard keeps monitoring it:
 //
-//     import { LocalRunner } from "astra-sdk";
+//     import { LocalRunner } from "astra-ai-sdk";
 //     const runner = await LocalRunner.fromDeployment({ baseUrl, deploymentId, apiKey });
 //     const out = await runner.run({ input: { data: myFloats, dims: [1, 3, 224, 224] } });
 //     await runner.close();

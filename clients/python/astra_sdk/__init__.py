@@ -7,7 +7,7 @@ Hosted inference (server-side telemetry, zero extra deps):
     client = AstraClient(deployment_id, api_key)   # base_url defaults to the hosted origin
     out = client.infer({"input": [[0.1, 0.2, ...]]})
 
-Local serving (pip install 'astra-sdk[serve]') — pulls the compressed artifact
+Local serving (pip install 'astra-ai-sdk[serve]') — pulls the compressed artifact
 and runs it on YOUR hardware while the dashboard keeps monitoring it:
 
     from astra_sdk import LocalRunner

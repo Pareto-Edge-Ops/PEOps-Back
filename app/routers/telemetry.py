@@ -138,7 +138,7 @@ def meta(
         "deployments": len(deps),
         "liveDeployments": sum(1 for d in deps if d.status != "paused"),
         # Honest labeling of where live data comes from: hosted /v1/infer
-        # ("server") vs astra-sdk local serving ("client").
+        # ("server") vs astra-ai-sdk local serving ("client").
         "sources": source_counts(session, model_id),
         "lastSnapshotAt": snap_ts,
     }
@@ -199,7 +199,7 @@ def clients(
     session: Session = Depends(get_session),
 ) -> list[dict]:
     """SDK client hosts serving this model locally — latest snapshot per client
-    (empty list when no astra-sdk traffic exists; the SPA hides the panel)."""
+    (empty list when no astra-ai-sdk traffic exists; the SPA hides the panel)."""
     _model(session, model_id, current_user.id)
     rows = session.exec(
         select(TelemetrySnapshotRow)

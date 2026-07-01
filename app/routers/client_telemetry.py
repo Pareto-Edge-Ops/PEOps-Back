@@ -1,4 +1,4 @@
-"""Public API-key-authed endpoints for the astra-sdk pip package.
+"""Public API-key-authed endpoints for the astra-ai-sdk pip package.
 
   POST /api/v1/telemetry/{deployment_id}/batch   — ship telemetry batches
   GET  /api/v1/artifacts/{deployment_id}         — pull the deployed artifact
